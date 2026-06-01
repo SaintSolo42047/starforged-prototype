@@ -9,6 +9,11 @@
         #overlay { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
         .hud { position:absolute; padding:10px; background:rgba(0,0,0,0.7); border:2px solid #0ff; border-radius:8px; font-size:12px; }
         #dice { position:absolute; bottom:20px; right:20px; background:rgba(0,0,0,0.7); padding:15px; border:2px solid #0ff; display:none; }
+        #topControls { position:absolute; top:10px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.7); padding:10px 20px; border:2px solid #0ff; border-radius:8px; font-size:11px; text-align:center; max-width:600px; }
+        #bottomControls { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.7); padding:10px 20px; border:2px solid #0ff; border-radius:8px; font-size:11px; text-align:center; max-width:800px; }
+        .controlSection { margin:5px 0; }
+        .controlKey { color:#0ff; font-weight:bold; }
+        .controlDesc { color:#aaa; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
 </head>
@@ -16,6 +21,20 @@
     <main>
         <canvas id="canvas">3D Starship Navigation Screen - Starforged solo TTRPG game</canvas>
         <div id="overlay">
+            <div id="topControls">
+                <div class="controlSection">
+                    <span class="controlKey">MOVEMENT:</span> <span class="controlDesc">↑↓ Forward/Back</span> | 
+                    <span class="controlDesc">←→ Strafe</span> | 
+                    <span class="controlKey">SHIFT+↑↓</span> <span class="controlDesc">Rotate</span>
+                </div>
+                <div class="controlSection">
+                    <span class="controlKey">SHIP:</span> <span class="controlDesc">Space Ascend</span> | 
+                    <span class="controlKey">CTRL</span> <span class="controlDesc">Descend</span> | 
+                    <span class="controlKey">L</span> <span class="controlDesc">Land</span> | 
+                    <span class="controlKey">T</span> <span class="controlDesc">Travel</span>
+                </div>
+            </div>
+
             <div id="hud" class="hud" style="top:10px; left:10px; width:240px; display:none;">
                 <div id="meters"></div>
                 <div id="progress" style="margin-top:10px;"></div>
@@ -34,6 +53,20 @@
                     <div id="diceC2" style="width:60px;height:60px;background:#ccc;color:#000;display:flex;align-items:center;justify-content:center;font-size:28px;border:3px solid #000;"></div>
                 </div>
                 <div id="outcomeText" style="margin-top:8px;font-size:22px;text-align:center;"></div>
+            </div>
+
+            <div id="bottomControls">
+                <div class="controlSection">
+                    <span class="controlKey">E</span> <span class="controlDesc">Enter/Exit Ship</span> | 
+                    <span class="controlKey">Q/Z</span> <span class="controlDesc">Camera Pitch</span> | 
+                    <span class="controlKey">R</span> <span class="controlDesc">Roll Dice</span>
+                </div>
+                <div class="controlSection">
+                    <span class="controlKey">SITUATION:</span> <span class="controlDesc">C Combat</span> | 
+                    <span class="controlDesc">V Conversation</span> | 
+                    <span class="controlDesc">O Obstacle</span> | 
+                    <span class="controlDesc">T Travel</span>
+                </div>
             </div>
         </div>
     </main>
