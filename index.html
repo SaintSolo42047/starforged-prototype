@@ -9,8 +9,8 @@
         #overlay { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
         .hud { position:absolute; padding:10px; background:rgba(0,0,0,0.7); border:2px solid #0ff; border-radius:8px; font-size:12px; }
         #dice { position:absolute; bottom:20px; right:20px; background:rgba(0,0,0,0.7); padding:15px; border:2px solid #0ff; display:none; }
-        #topControls { position:absolute; top:10px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.7); padding:10px 20px; border:2px solid #0ff; border-radius:8px; font-size:11px; text-align:center; max-width:600px; }
-        #bottomControls { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.7); padding:10px 20px; border:2px solid #0ff; border-radius:8px; font-size:11px; text-align:center; max-width:800px; }
+        #topControls { position:absolute; top:10px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.7); padding:10px 20px; border:2px solid #0ff; border-radius:8px; font-size:11px; text-align:center; }
+        #bottomControls { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.7); padding:10px 20px; border:2px solid #0ff; border-radius:8px; font-size:11px; text-align:center; }
         .controlSection { margin:5px 0; }
         .controlKey { color:#0ff; font-weight:bold; }
         .controlDesc { color:#aaa; }
@@ -72,7 +72,7 @@
     </main>
 
 <script>
-// Complete Starforged 3D - blocky terrain, all controls, accessibility fixes
+// Complete Starforged 3D - flat terrain with color variations, all controls, accessibility fixes
 const canvas = document.getElementById('canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -94,16 +94,16 @@ scene.add(fillLight);
 const hemiLight = new THREE.HemisphereLight(0xaaccff, 0x334422, 0.9);
 scene.add(hemiLight);
 
-// World types, terrain, villages, human, ship, char, oracles, etc.
+// World types with color palettes for variation
 const worldTypes = [
-{name: "Barren World", color: 0x777777, heightVar: 3},
-    {name: "Frozen World", color: 0xaaddff, heightVar: 4},
-    {name: "Arid World", color: 0xffeecc, heightVar: 3},
-    {name: "Oceanic World", color: 0x2288dd, heightVar: 2},
-    {name: "Arboreal World", color: 0x44aa55, heightVar: 3.5},
-    {name: "Earthlike World", color: 0x55bb66, heightVar: 3},
-    {name: "Volcanic World", color: 0xdd7744, heightVar: 4.5},
-    {name: "Metallic World", color: 0xaaaaaa, heightVar: 2.5}
+    {name: "Barren World", colors: [0x666666, 0x777777, 0x888888]},
+    {name: "Frozen World", colors: [0xaabbff, 0xccddff, 0x99bbff]},
+    {name: "Arid World", colors: [0xffeecc, 0xffd9a3, 0xffe6b3]},
+    {name: "Oceanic World", colors: [0x2288dd, 0x3399ff, 0x1177cc]},
+    {name: "Arboreal World", colors: [0x44aa55, 0x55bb66, 0x339944]},
+    {name: "Earthlike World", colors: [0x55bb66, 0x66cc77, 0x44aa55]},
+    {name: "Volcanic World", colors: [0xdd7744, 0xee8855, 0xcc6633]},
+    {name: "Metallic World", colors: [0xaaaaaa, 0xbbbbbb, 0x999999]}
 ];
 
 let currentPlanet = {...worldTypes[5]};
@@ -114,11 +114,19 @@ const gridSize = 64;
 let terrainBlocks = [];
 
 function getTerrainHeight(worldX, worldZ) {
-  let height = Math.sin(worldX / 120) * currentPlanet.heightVar +
-                 Math.sin(worldZ / 90) * (currentPlanet.heightVar * 0.8) +
-                 Math.sin((worldX + worldZ) / 60) * (currentPlanet.heightVar * 0.5) +
-                 Math.random() * 2 - 1;
+    // Flat terrain with minimal variation (0-2 blocks)
+    let height = Math.random() * 1.5;
     return Math.max(1, Math.floor(height)) * blockSize;
+}
+
+function getTerrainColor(worldX, worldZ) {
+    // Distribute colors across the terrain for visual variety
+    const colorIndex = Math.abs(Math.floor(worldX / 60) + Math.floor(worldZ / 60)) % currentPlanet.colors.length;
+    const baseColor = currentPlanet.colors[colorIndex];
+    
+    // Add slight random variation to color
+    const variation = Math.floor(Math.random() * 3) - 1;
+    return baseColor;
 }
 
 function generateTerrain() {
@@ -128,16 +136,13 @@ function generateTerrain() {
         for (let z = 0; z < gridSize; z++) {
             const worldX = (x - gridSize/2) * blockSize;
             const worldZ = (z - gridSize/2) * blockSize;
-            let heightBlocks = Math.max(1, Math.floor(
-                Math.sin(worldX / 80) * currentPlanet.heightVar +
-                Math.sin(worldZ / 55) * (currentPlanet.heightVar * 0.8) +
-                Math.sin((worldX + worldZ) / 35) * (currentPlanet.heightVar * 0.6) +
-                Math.random() * 4
-            ));
+            // Mostly 1 block, occasionally 2
+            let heightBlocks = Math.random() > 0.8 ? 2 : 1;
+            
             for (let y = 0; y < heightBlocks; y++) {
                 const block = new THREE.Mesh(
                     new THREE.BoxGeometry(blockSize, blockSize, blockSize),
-                    new THREE.MeshPhongMaterial({ color: currentPlanet.color, flatShading: true })
+                    new THREE.MeshPhongMaterial({ color: getTerrainColor(worldX, worldZ), flatShading: true })
                 );
                 block.position.set(worldX, y * blockSize + blockSize/2, worldZ);
                 scene.add(block);
@@ -247,12 +252,12 @@ function updateHUD() {
         const val = char.meters[key];
         const perc = key === "Momentum" ? ((val + 6) / 16 * 100) : (val / 5 * 100);
         const barColor = key === "Health" ? "#f00" : key === "Spirit" ? "#f0f" : key === "Supply" ? "#0f0" : "#0ff";
-        html += `<div style="display:flex;align-items:center;margin:4px 0;"><span style="width:90px;">${key}: ${val}</span><div style="flex:1;background:#333;height:12px;border-radius:6px;overflow:hidden;margin:0 8px;"><div style="background:${barColor};width:${perc}%;height:100%;"></div></div></div>`;
+        html += `<div style="display:flex;align-items:center;margin:4px 0;"><span style="width:90px;">${key}: ${val}</span><div style="flex:1;background:#333;height:12px;border-radius:6px;overflow:hidden;"><div style="width:${perc}%;height:100%;background:${barColor};"></div></div></div>`;
     });
     document.getElementById('meters').innerHTML = html;
     
     const progressPerc = (char.progress / 10) * 100;
-    document.getElementById('progress').innerHTML = `Progress: <span style="color:#0f0;">${char.progress}/10</span><div style="background:#333;height:14px;border-radius:7px;overflow:hidden;display:inline-block;width:120px;margin-left:8px;"><div style="background:#0f0;width:${progressPerc}%;height:100%;"></div></div>`;
+    document.getElementById('progress').innerHTML = `Progress: <span style="color:#0f0;">${char.progress}/10</span><div style="background:#333;height:14px;border-radius:7px;overflow:hidden;display:inline-block;width:150px;margin-left:5px;vertical-align:middle;"><div style="width:${progressPerc}%;height:100%;background:#0f0;"></div></div>`;
     
     document.getElementById('planetInfo').innerHTML = `Planet: <span style="color:#ff0;">${currentPlanet.name}</span>`;
     document.getElementById('situationText').textContent = currentSituation.toUpperCase();
