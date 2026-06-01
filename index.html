@@ -41,7 +41,7 @@
     </div>
 
 <script>
-// Starforged 3D + The Perilous Void integration - full procedural planet travel
+// Starforged 3D + The Perilous Void - fixed terrain lighting
 const canvas = document.getElementById('canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
 renderer.setSize(800, 600);
@@ -52,45 +52,47 @@ scene.fog = new THREE.Fog(0x112211, 300, 2200);
 
 const camera = new THREE.PerspectiveCamera(60, 800/600, 0.1, 3000);
 
-scene.add(new THREE.AmbientLight(0xaaaaaa, 0.6));
-const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+scene.add(new THREE.AmbientLight(0xaaaaaa, 0.8));
+const dirLight = new THREE.DirectionalLight(0xffffff, 3.0);
 dirLight.position.set(200, 300, 100);
 scene.add(dirLight);
+const fillLight = new THREE.DirectionalLight(0xffffff, 1.5);
+fillLight.position.set(-150, 100, -200);
+scene.add(fillLight);
 
-// Perilous Void world types (from PDF World Creation tables)
+// Perilous Void world types - brighter colors for visibility
 const worldTypes = [
-    {name: "Barren World", color: 0x555555, heightVar: 8},
-    {name: "Frozen World", color: 0x88aaff, heightVar: 25},
-    {name: "Arid World", color: 0xccaa77, heightVar: 12},
-    {name: "Oceanic World", color: 0x0066aa, heightVar: 6},
-    {name: "Arboreal World", color: 0x226622, heightVar: 18},
-    {name: "Earthlike World", color: 0x44aa44, heightVar: 15},
-    {name: "Volcanic World", color: 0xaa4422, heightVar: 22},
-    {name: "Metallic World", color: 0x777777, heightVar: 10}
+    {name: "Barren World", color: 0x666666, heightVar: 12},
+    {name: "Frozen World", color: 0xaaccee, heightVar: 28},
+    {name: "Arid World", color: 0xeeddaa, heightVar: 15},
+    {name: "Oceanic World", color: 0x2288dd, heightVar: 8},
+    {name: "Arboreal World", color: 0x338833, heightVar: 22},
+    {name: "Earthlike World", color: 0x44aa44, heightVar: 18},
+    {name: "Volcanic World", color: 0xcc6644, heightVar: 26},
+    {name: "Metallic World", color: 0x999999, heightVar: 14}
 ];
 
-let currentPlanet = {name: "Unknown Frontier", color: 0x225522, heightVar: 15};
+let currentPlanet = {...worldTypes[5]}; // start with Earthlike
 
-// 2000x2000 procedural terrain (Perilous Void style)
+// Improved 2000x2000 procedural terrain
 const mapSize = 2000;
 const terrainSegments = 256;
-let terrain, groundMat;
+let terrain;
 function generateTerrain() {
     if (terrain) scene.remove(terrain);
-    groundMat = new THREE.MeshPhongMaterial({ color: currentPlanet.color, flatShading: true });
     terrain = new THREE.Mesh(
         new THREE.PlaneGeometry(mapSize, mapSize, terrainSegments, terrainSegments),
-        groundMat
+        new THREE.MeshPhongMaterial({ color: currentPlanet.color, flatShading: true, shininess: 5 })
     );
     terrain.rotation.x = -Math.PI / 2;
     const vertices = terrain.geometry.attributes.position.array;
     for (let i = 0; i < vertices.length; i += 3) {
         const x = vertices[i];
         const z = vertices[i + 2];
-        let height = Math.sin(x / 120) * currentPlanet.heightVar +
-                     Math.sin(z / 90) * (currentPlanet.heightVar * 0.8) +
-                     Math.sin((x + z) / 60) * (currentPlanet.heightVar * 0.5) +
-                     Math.random() * 12 - 6;
+        let height = Math.sin(x / 80) * currentPlanet.heightVar +
+                     Math.sin(z / 60) * (currentPlanet.heightVar * 0.9) +
+                     Math.sin((x + z) / 40) * (currentPlanet.heightVar * 0.6) +
+                     Math.random() * 18 - 9;
         vertices[i + 1] = height;
     }
     terrain.geometry.attributes.position.needsUpdate = true;
@@ -99,7 +101,7 @@ function generateTerrain() {
 }
 generateTerrain();
 
-// Villages (Perilous Void style - simple box houses + villagers)
+// Villages and villagers (Perilous Void style)
 const villageGroup = new THREE.Group();
 function generateVillages() {
     villageGroup.clear();
@@ -129,7 +131,7 @@ function generateVillages() {
 }
 generateVillages();
 
-// Human and ship (same as before)
+// Human and ship (same)
 const human = new THREE.Group();
 const humanBody = new THREE.Mesh(new THREE.CylinderGeometry(6, 6, 20, 8), new THREE.MeshPhongMaterial({ color: 0x2288ff }));
 humanBody.position.y = 15;
@@ -198,7 +200,6 @@ function updateHUD() {
 }
 
 function travelToNewPlanet() {
-    // Perilous Void inspired travel roll (Starforged Journey style)
     rollResult = ironswornRoll(char.stats.Wits);
     lastReaction = randomChoice(oracles.travel);
     const diceEl = document.getElementById('dice');
@@ -210,15 +211,13 @@ function travelToNewPlanet() {
     document.getElementById('reaction').innerHTML = `<b>Reaction:</b><br>${lastReaction}`;
     document.getElementById('reaction').style.display = 'block';
 
-    if (rollResult.text === "Miss") return; // failed jump - stay on current planet
+    if (rollResult.text === "Miss") return;
 
-    // Success - generate new planet from Perilous Void tables
     currentPlanet = {...worldTypes[Math.floor(Math.random() * worldTypes.length)]};
     generateTerrain();
     generateVillages();
     updateHUD();
 
-    // Simple travel animation
     ship.position.y = 80;
     setTimeout(() => { ship.position.y = 20; }, 800);
 }
@@ -229,14 +228,12 @@ function animate() {
     const target = controlMode === "on_foot" ? human : ship;
 
     if (gameState === "playing") {
-        // Rotate player
         if (keys["Shift"]) {
             if (keys["ArrowLeft"]) playerYaw -= 0.05;
             if (keys["ArrowRight"]) playerYaw += 0.05;
             target.rotation.y = playerYaw;
         }
 
-        // Movement relative to facing
         const forwardX = Math.sin(playerYaw);
         const forwardZ = Math.cos(playerYaw);
         const strafeX = Math.sin(playerYaw + Math.PI / 2);
@@ -249,7 +246,6 @@ function animate() {
 
         if (controlMode === "on_foot") target.position.y = Math.abs(Math.sin(Date.now() / 120)) * 3;
 
-        // Board / exit ship
         if (keys["e"] || keys["E"]) {
             if (controlMode === "on_foot") {
                 const dist = human.position.distanceTo(ship.position);
@@ -268,19 +264,16 @@ function animate() {
             keys["e"] = keys["E"] = false;
         }
 
-        // Land ship
         if ((keys["l"] || keys["L"]) && controlMode === "in_ship") {
             ship.position.y = 10;
             keys["l"] = keys["L"] = false;
         }
 
-        // Travel to new planet (The Perilous Void integration)
         if ((keys["t"] || keys["T"]) && controlMode === "in_ship") {
             travelToNewPlanet();
             keys["t"] = keys["T"] = false;
         }
 
-        // Roll
         if (keys["r"] || keys["R"]) {
             rolling = true;
             rollFrame = 0;
@@ -327,7 +320,6 @@ function animate() {
         }
     }
 
-    // Camera follows player facing
     const camDistance = 150;
     const camX = target.position.x + Math.sin(playerYaw + Math.PI) * camDistance;
     const camZ = target.position.z + Math.cos(playerYaw + Math.PI) * camDistance;
@@ -339,11 +331,9 @@ function animate() {
 
 animate();
 
-// Start game
 gameState = "playing";
 document.getElementById('hud').style.display = 'block';
 document.getElementById('status').style.display = 'block';
 updateHUD();
 </script>
 </body>
-</html>
