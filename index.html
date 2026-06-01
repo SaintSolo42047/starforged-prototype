@@ -63,14 +63,14 @@ scene.add(hemiLight);
 
 // World types, terrain, villages, human, ship, char, oracles, etc.
 const worldTypes = [
-    {name: "Barren World", color: 0x777777, heightVar: 6},
-    {name: "Frozen World", color: 0xaaddff, heightVar: 8},
-    {name: "Arid World", color: 0xffeecc, heightVar: 5},
-    {name: "Oceanic World", color: 0x2288dd, heightVar: 3},
-    {name: "Arboreal World", color: 0x44aa55, heightVar: 7},
-    {name: "Earthlike World", color: 0x55bb66, heightVar: 6},
-    {name: "Volcanic World", color: 0xdd7744, heightVar: 9},
-    {name: "Metallic World", color: 0xaaaaaa, heightVar: 4}
+{name: "Barren World", color: 0x777777, heightVar: 3},
+    {name: "Frozen World", color: 0xaaddff, heightVar: 4},
+    {name: "Arid World", color: 0xffeecc, heightVar: 3},
+    {name: "Oceanic World", color: 0x2288dd, heightVar: 2},
+    {name: "Arboreal World", color: 0x44aa55, heightVar: 3.5},
+    {name: "Earthlike World", color: 0x55bb66, heightVar: 3},
+    {name: "Volcanic World", color: 0xdd7744, heightVar: 4.5},
+    {name: "Metallic World", color: 0xaaaaaa, heightVar: 2.5}
 ];
 
 let currentPlanet = {...worldTypes[5]};
@@ -81,10 +81,10 @@ const gridSize = 64;
 let terrainBlocks = [];
 
 function getTerrainHeight(worldX, worldZ) {
-    let height = Math.sin(worldX / 80) * currentPlanet.heightVar +
-                 Math.sin(worldZ / 55) * (currentPlanet.heightVar * 0.8) +
-                 Math.sin((worldX + worldZ) / 35) * (currentPlanet.heightVar * 0.6) +
-                 Math.random() * 4;
+  let height = Math.sin(worldX / 120) * currentPlanet.heightVar +
+                 Math.sin(worldZ / 90) * (currentPlanet.heightVar * 0.8) +
+                 Math.sin((worldX + worldZ) / 60) * (currentPlanet.heightVar * 0.5) +
+                 Math.random() * 2 - 1;
     return Math.max(1, Math.floor(height)) * blockSize;
 }
 
