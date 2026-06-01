@@ -1,0 +1,182 @@
+import pygame
+import random
+import sys
+
+# Ironsworn Starforged core rules mapping (identical mechanics):
+# - Stats, action roll, meters, progress tracks, oracles remain unchanged
+# - Movement: arrow keys control ship position (physical visual in space)
+# - In travel state only: movement fills progress track per rules for journeys
+# - Roll still required for full Journey move resolution
+
+pygame.init()
+SCREEN_WIDTH = 800
+SCREEN_HEIGHT = 600
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+pygame.display.set_caption("Starforged Visual Prototype - Sci-Fi Solo TTRPG Rules in Action")
+clock = pygame.time.Clock()
+font = pygame.font.SysFont("arial", 24)
+small_font = pygame.font.SysFont("arial", 18)
+
+class Character:
+    def __init__(self):
+        self.stats = {"Edge": 2, "Heart": 2, "Iron": 2, "Shadow": 2, "Wits": 2}
+        self.meters = {"Health": 5, "Spirit": 5, "Supply": 5, "Momentum": 2}
+        self.progress = 0
+
+    def draw_hud(self, surface):
+        y = 20
+        for name, value in self.meters.items():
+            text = font.render(f"{name}: {value}", True, (255, 255, 255))
+            surface.blit(text, (20, y))
+            pygame.draw.rect(surface, (100, 100, 100), (200, y + 5, 200, 20))
+            fill_width = int((value / 5) * 200) if name != "Momentum" else int(((value + 6) / 16) * 200)
+            color = (0, 255, 0) if value > 2 else (255, 0, 0)
+            pygame.draw.rect(surface, color, (200, y + 5, fill_width, 20))
+            y += 40
+        text = font.render("Progress Track: ", True, (255, 255, 255))
+        surface.blit(text, (20, y))
+        pygame.draw.rect(surface, (100, 100, 100), (200, y + 5, 200, 20))
+        pygame.draw.rect(surface, (0, 200, 255), (200, y + 5, int(self.progress / 10 * 200), 20))
+
+class Oracle:
+    def __init__(self):
+        self.tables = {
+            "travel": ["Smooth hyperspace jump", "Pirate intercept", "Derelict signal", "Nebula interference"],
+            "combat": ["Enemy fighter engages", "Shield overload", "You gain targeting lock", "Hull breach sustained"],
+            "conversation": ["Station hails peacefully", "Captain demands tribute", "AI reveals coordinates", "Faction turns hostile"],
+            "obstacle": ["Asteroid field clears", "System glitch arises", "Partial scan success", "Full system failure with cost"]
+        }
+
+    def get_reaction(self, context):
+        return random.choice(self.tables.get(context, ["Generic space event"]))
+
+def ironsworn_roll(stat_value, bonus=0):
+    action_die = random.randint(1, 6)
+    challenge1 = random.randint(1, 10)
+    challenge2 = random.randint(1, 10)
+    total = action_die + stat_value + bonus
+    if total > max(challenge1, challenge2):
+        return "Strong Hit", total, challenge1, challenge2
+    elif total > min(challenge1, challenge2):
+        return "Weak Hit", total, challenge1, challenge2
+    else:
+        return "Miss", total, challenge1, challenge2
+
+def draw_dice(surface, rolling=False, result=None):
+    color = (200, 200, 200)
+    pygame.draw.rect(surface, color, (300, 300, 60, 60))
+    pygame.draw.rect(surface, color, (380, 300, 60, 60))
+    pygame.draw.rect(surface, color, (460, 300, 60, 60))
+    if rolling:
+        text = small_font.render("ROLLING...", True, (255, 255, 0))
+        surface.blit(text, (300, 320))
+    elif result:
+        action_text = small_font.render(str(result[1]), True, (0, 0, 0))
+        c1_text = small_font.render(str(result[2]), True, (0, 0, 0))
+        c2_text = small_font.render(str(result[3]), True, (0, 0, 0))
+        surface.blit(action_text, (320, 320))
+        surface.blit(c1_text, (400, 320))
+        surface.blit(c2_text, (480, 320))
+        outcome_text = font.render(result[0], True, (0, 255, 0) if result[0] == "Strong Hit" else (255, 255, 0) if result[0] == "Weak Hit" else (255, 0, 0))
+        surface.blit(outcome_text, (300, 380))
+    else:
+        text = small_font.render("Press R to roll", True, (200, 200, 200))
+        surface.blit(text, (300, 320))
+
+char = Character()
+oracle = Oracle()
+current_state = "travel"
+roll_result = None
+rolling = False
+frame = 0
+
+# Ship position for arrow key movement
+ship_x = 650
+ship_y = 500
+
+running = True
+while running:
+    screen.fill((10, 10, 30))
+
+    # Draw stars for space
+    for _ in range(50):
+        pygame.draw.circle(screen, (200, 200, 255), (random.randint(0, SCREEN_WIDTH), random.randint(0, SCREEN_HEIGHT)), 1)
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_r:
+                rolling = True
+                frame = 0
+            if event.key == pygame.K_t:
+                current_state = "travel"
+            if event.key == pygame.K_c:
+                current_state = "combat"
+            if event.key == pygame.K_v:
+                current_state = "conversation"
+            if event.key == pygame.K_o:
+                current_state = "obstacle"
+
+    # Arrow key movement - physical ship control
+    keys = pygame.key.get_pressed()
+    move_speed = 5
+    if keys[pygame.K_LEFT]:
+        ship_x -= move_speed
+    if keys[pygame.K_RIGHT]:
+        ship_x += move_speed
+    if keys[pygame.K_UP]:
+        ship_y -= move_speed
+    if keys[pygame.K_DOWN]:
+        ship_y += move_speed
+
+    # Keep ship on screen
+    ship_x = max(50, min(SCREEN_WIDTH - 50, ship_x))
+    ship_y = max(50, min(SCREEN_HEIGHT - 50, ship_y))
+
+    # Rolling logic
+    if rolling:
+        frame += 1
+        if frame > 20:
+            stat = char.stats["Wits"]
+            roll_result = ironsworn_roll(stat)
+            rolling = False
+            if roll_result[0] == "Strong Hit":
+                char.progress = min(10, char.progress + 3)
+                char.meters["Momentum"] = min(10, char.meters["Momentum"] + 1)
+            elif roll_result[0] == "Weak Hit":
+                char.progress = min(10, char.progress + 1)
+                char.meters["Supply"] = max(0, char.meters["Supply"] - 1)
+            else:
+                char.meters["Health"] = max(0, char.meters["Health"] - 1)
+                char.meters["Momentum"] = max(-6, char.meters["Momentum"] - 2)
+
+    char.draw_hud(screen)
+
+    state_text = font.render(f"Current Situation: {current_state.upper()}", True, (255, 255, 100))
+    screen.blit(state_text, (20, 300))
+
+    if roll_result:
+        reaction = oracle.get_reaction(current_state)
+        react_text = small_font.render(f"Reaction: {reaction}", True, (200, 200, 255))
+        screen.blit(react_text, (20, 400))
+        pygame.draw.circle(screen, (255, 100, 0), (600, 400), 30)
+
+    draw_dice(screen, rolling, roll_result)
+
+    # Ship visual that moves with arrows - changes color on miss per rules
+    ship_color = (0, 255, 255) if not roll_result or roll_result[0] != "Miss" else (255, 100, 100)
+    pygame.draw.polygon(screen, ship_color, [(ship_x, ship_y), (ship_x + 30, ship_y + 20), (ship_x, ship_y + 40)])
+
+    # Travel bonus: movement fills track in travel state only
+    if current_state == "travel" and (keys[pygame.K_LEFT] or keys[pygame.K_RIGHT] or keys[pygame.K_UP] or keys[pygame.K_DOWN]):
+        char.progress = min(10, char.progress + 1)  # Simple journey progress per rules
+
+    instr = small_font.render("Arrows=Move Ship | R=Roll | T=Travel | C=Combat | V=Conversation | O=Obstacle", True, (150, 150, 150))
+    screen.blit(instr, (20, 550))
+
+    pygame.display.flip()
+    clock.tick(60)
+
+pygame.quit()
+sys.exit()
