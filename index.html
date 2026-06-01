@@ -36,12 +36,12 @@
         </div>
 
         <p style="position:absolute; bottom:10px; left:10px; font-size:14px; color:#aaa;">
-            Arrows = Move (relative to facing) • Shift + Left/Right = Rotate Player • R = Roll • T = Travel to New Planet (in ship) • E = Board/Exit Ship • L = Land Ship
+            Arrows = Move • Shift+Left/Right = Rotate Player • Q/Z = Look Up/Down • R = Roll • T = Travel (in ship) • E = Board/Exit Ship • L = Land Ship
         </p>
     </div>
 
 <script>
-// Starforged 3D + The Perilous Void - Minecraft blocky terrain with proper spawning
+// Starforged 3D - camera always follows player with high/low pitch control
 const canvas = document.getElementById('canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
 renderer.setSize(800, 600);
@@ -62,7 +62,7 @@ scene.add(fillLight);
 const hemiLight = new THREE.HemisphereLight(0xaaccff, 0x334422, 0.9);
 scene.add(hemiLight);
 
-// Perilous Void world types
+// World types
 const worldTypes = [
     {name: "Barren World", color: 0x777777, heightVar: 6},
     {name: "Frozen World", color: 0xaaddff, heightVar: 8},
@@ -81,7 +81,6 @@ const blockSize = 32;
 const gridSize = 64;
 let terrainBlocks = [];
 
-// Get terrain height at any world x,z position (for proper spawning)
 function getTerrainHeight(worldX, worldZ) {
     let height = Math.sin(worldX / 80) * currentPlanet.heightVar +
                  Math.sin(worldZ / 55) * (currentPlanet.heightVar * 0.8) +
@@ -93,7 +92,6 @@ function getTerrainHeight(worldX, worldZ) {
 function generateTerrain() {
     terrainBlocks.forEach(b => scene.remove(b));
     terrainBlocks = [];
-    const half = gridSize * blockSize / 2;
     for (let x = 0; x < gridSize; x++) {
         for (let z = 0; z < gridSize; z++) {
             const worldX = (x - gridSize/2) * blockSize;
@@ -148,17 +146,17 @@ function generateVillages() {
 }
 generateVillages();
 
-// Human (proper skin tone head)
+// Human (skin tone head)
 const human = new THREE.Group();
 const humanBody = new THREE.Mesh(new THREE.CylinderGeometry(6, 6, 20, 8), new THREE.MeshPhongMaterial({ color: 0x2288ff }));
 humanBody.position.y = 15;
 human.add(humanBody);
-const humanHead = new THREE.Mesh(new THREE.SphereGeometry(8, 16, 16), new THREE.MeshPhongMaterial({ color: 0xffddaa })); // skin tone
+const humanHead = new THREE.Mesh(new THREE.SphereGeometry(8, 16, 16), new THREE.MeshPhongMaterial({ color: 0xffddaa }));
 humanHead.position.y = 32;
 human.add(humanHead);
 scene.add(human);
 
-// Ship - bigger and starts near player
+// Ship - bigger
 const ship = new THREE.Group();
 const shipBody = new THREE.Mesh(new THREE.ConeGeometry(18, 60, 4), new THREE.MeshPhongMaterial({ color: 0x00ffff }));
 shipBody.rotation.x = Math.PI / 2;
@@ -170,6 +168,7 @@ scene.add(ship);
 let gameState = "playing";
 let controlMode = "on_foot";
 let playerYaw = Math.PI;
+let cameraPitch = 0.4; // high/low angle
 let currentSituation = "travel";
 
 const char = { stats: { Edge: 2, Heart: 2, Iron: 2, Shadow: 2, Wits: 2 }, meters: { Health: 5, Spirit: 5, Supply: 5, Momentum: 2 }, progress: 0 };
@@ -244,12 +243,18 @@ function animate() {
     const target = controlMode === "on_foot" ? human : ship;
 
     if (gameState === "playing") {
+        // Rotate player
         if (keys["Shift"]) {
             if (keys["ArrowLeft"]) playerYaw -= 0.05;
             if (keys["ArrowRight"]) playerYaw += 0.05;
             target.rotation.y = playerYaw;
         }
 
+        // Camera pitch (high/low)
+        if (keys["q"] || keys["Q"]) cameraPitch = Math.min(1.2, cameraPitch + 0.03);
+        if (keys["z"] || keys["Z"]) cameraPitch = Math.max(-0.6, cameraPitch - 0.03);
+
+        // Movement relative to facing
         const forwardX = Math.sin(playerYaw);
         const forwardZ = Math.cos(playerYaw);
         const strafeX = Math.sin(playerYaw + Math.PI / 2);
@@ -260,10 +265,9 @@ function animate() {
         if (keys["ArrowLeft"]) { target.position.x += strafeX * speed * 0.7; target.position.z += strafeZ * speed * 0.7; }
         if (keys["ArrowRight"]) { target.position.x -= strafeX * speed * 0.7; target.position.z -= strafeZ * speed * 0.7; }
 
-        // Keep human on ground
         if (controlMode === "on_foot") {
-            const groundY = getTerrainHeight(human.position.x, human.position.z);
-            human.position.y = groundY + 15; // half height of human
+            const groundY = getTerrainHeight(target.position.x, target.position.z);
+            target.position.y = groundY + 15;
         }
 
         if (keys["e"] || keys["E"]) {
@@ -340,10 +344,16 @@ function animate() {
         }
     }
 
+    // Smooth camera follow with pitch
+    const target = controlMode === "on_foot" ? human : ship;
     const camDistance = 150;
-    const camX = target.position.x + Math.sin(playerYaw + Math.PI) * camDistance;
-    const camZ = target.position.z + Math.cos(playerYaw + Math.PI) * camDistance;
-    camera.position.set(camX, 60, camZ);
+    const camX = target.position.x + Math.sin(playerYaw + Math.PI) * camDistance * Math.cos(cameraPitch);
+    const camZ = target.position.z + Math.cos(playerYaw + Math.PI) * camDistance * Math.cos(cameraPitch);
+    const camY = target.position.y + camDistance * Math.sin(cameraPitch) + (controlMode === "on_foot" ? 30 : 60);
+
+    camera.position.x = camera.position.x * 0.85 + camX * 0.15; // smooth lerp
+    camera.position.y = camera.position.y * 0.85 + camY * 0.15;
+    camera.position.z = camera.position.z * 0.85 + camZ * 0.15;
     camera.lookAt(target.position);
 
     renderer.render(scene, camera);
@@ -351,9 +361,9 @@ function animate() {
 
 animate();
 
-// Proper starting spawn - ship near player, human on ground
+// Proper starting spawn
 human.position.set(0, 0, 0);
-ship.position.set(80, 20, 40); // near player
+ship.position.set(80, 20, 40);
 human.position.y = getTerrainHeight(human.position.x, human.position.z) + 15;
 
 gameState = "playing";
