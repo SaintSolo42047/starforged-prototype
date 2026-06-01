@@ -111,6 +111,7 @@ let currentPlanet = {...worldTypes[5]};
 const mapSize = 2000;
 const blockSize = 32;
 const gridSize = 64;
+const mapBounds = (gridSize / 2) * blockSize; // Half the map size in each direction
 let terrainBlocks = [];
 
 // Smooth interpolation function for perlin-like noise
@@ -285,12 +286,12 @@ function updateHUD() {
         const val = char.meters[key];
         const perc = key === "Momentum" ? ((val + 6) / 16 * 100) : (val / 5 * 100);
         const barColor = key === "Health" ? "#f00" : key === "Spirit" ? "#f0f" : key === "Supply" ? "#0f0" : "#0ff";
-        html += `<div style="display:flex;align-items:center;margin:4px 0;"><span style="width:90px;">${key}: ${val}</span><div style="flex:1;background:#333;height:12px;border-radius:6px;overflow:hidden;"><div style="background:${barColor};width:${perc}%;height:100%;"></div></div></div>`;
+        html += `<div style="display:flex;align-items:center;margin:4px 0;"><span style="width:90px;">${key}: ${val}</span><div style="flex:1;background:#333;height:12px;border-radius:6px;overflow:hidden;display:inline-block;margin-left:8px;"><div style="width:${perc}%;height:100%;background:${barColor};"></div></div></div>`;
     });
     document.getElementById('meters').innerHTML = html;
     
     const progressPerc = (char.progress / 10) * 100;
-    document.getElementById('progress').innerHTML = `Progress: <span style="color:#0f0;">${char.progress}/10</span><div style="background:#333;height:14px;border-radius:7px;overflow:hidden;display:inline-block;width:100px;margin-left:10px;vertical-align:middle;"><div style="background:#0f0;width:${progressPerc}%;height:100%;"></div></div>`;
+    document.getElementById('progress').innerHTML = `Progress: <span style="color:#0f0;">${char.progress}/10</span><div style="background:#333;height:14px;border-radius:7px;overflow:hidden;display:inline-block;width:100px;margin-left:8px;vertical-align:middle;"><div style="width:${progressPerc}%;height:100%;background:#0f0;"></div></div>`;
     
     document.getElementById('planetInfo').innerHTML = `Planet: <span style="color:#ff0;">${currentPlanet.name}</span>`;
     document.getElementById('situationText').textContent = currentSituation.toUpperCase();
@@ -321,6 +322,16 @@ function travelToNewPlanet() {
     setTimeout(() => { ship.position.y = 20; }, 800);
 }
 
+// Wrap position within map bounds (treadmill effect)
+function wrapPosition(pos) {
+    const bounds = mapBounds;
+    if (pos.x > bounds) pos.x -= bounds * 2;
+    if (pos.x < -bounds) pos.x += bounds * 2;
+    if (pos.z > bounds) pos.z -= bounds * 2;
+    if (pos.z < -bounds) pos.z += bounds * 2;
+    return pos;
+}
+
 function animate() {
     requestAnimationFrame(animate);
     const speed = 5;
@@ -349,6 +360,9 @@ function animate() {
         if (keys["ArrowDown"]) { target.position.x -= forwardX * speed; target.position.z -= forwardZ * speed; }
         if (keys["ArrowLeft"]) { target.position.x += strafeX * speed * 0.7; target.position.z += strafeZ * speed * 0.7; }
         if (keys["ArrowRight"]) { target.position.x -= strafeX * speed * 0.7; target.position.z -= strafeZ * speed * 0.7; }
+
+        // Apply treadmill wrapping to prevent going off map
+        wrapPosition(target.position);
 
         // Vertical movement for ship only
         if (controlMode === "in_ship") {
