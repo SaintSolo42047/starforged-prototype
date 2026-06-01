@@ -162,7 +162,7 @@ ship.add(shipWings);
 scene.add(ship);
 
 let gameState = "playing";
-let controlMode = "on_foot";
+let controlMode = "in_ship";
 let playerYaw = Math.PI;
 let cameraPitch = 0.4;
 let currentSituation = "travel";
@@ -214,12 +214,12 @@ function updateHUD() {
         const val = char.meters[key];
         const perc = key === "Momentum" ? ((val + 6) / 16 * 100) : (val / 5 * 100);
         const barColor = key === "Health" ? "#f00" : key === "Spirit" ? "#f0f" : key === "Supply" ? "#0f0" : "#0ff";
-        html += `<div style="display:flex;align-items:center;margin:4px 0;"><span style="width:90px;">${key}: ${val}</span><div style="flex:1;background:#333;height:12px;border-radius:6px;overflow:hidden;"><div style="width:${perc}%;height:100%;background:${barColor};"></div></div></div>`;
+        html += `<div style="display:flex;align-items:center;margin:4px 0;"><span style="width:90px;">${key}: ${val}</span><div style="flex:1;background:#333;height:12px;border-radius:6px;overflow:hidden;margin:0 8px;"><div style="background:${barColor};width:${perc}%;height:100%;"></div></div></div>`;
     });
     document.getElementById('meters').innerHTML = html;
     
     const progressPerc = (char.progress / 10) * 100;
-    document.getElementById('progress').innerHTML = `Progress: <span style="color:#0f0;">${char.progress}/10</span><div style="background:#333;height:14px;border-radius:7px;overflow:hidden;display:inline-block;width:180px;margin-left:10px;"><div style="width:${progressPerc}%;height:100%;background:#0f0;"></div></div>`;
+    document.getElementById('progress').innerHTML = `Progress: <span style="color:#0f0;">${char.progress}/10</span><div style="background:#333;height:14px;border-radius:7px;overflow:hidden;display:inline-block;width:120px;margin-left:8px;"><div style="background:#0f0;width:${progressPerc}%;height:100%;"></div></div>`;
     
     document.getElementById('planetInfo').innerHTML = `Planet: <span style="color:#ff0;">${currentPlanet.name}</span>`;
     document.getElementById('situationText').textContent = currentSituation.toUpperCase();
@@ -389,10 +389,11 @@ function animate() {
 
 animate();
 
-// Proper starting spawn
-human.position.set(0, 0, 0);
+// Proper starting spawn - start in ship
+human.position.set(80, 0, 40);
 ship.position.set(80, 20, 40);
 human.position.y = getTerrainHeight(human.position.x, human.position.z) + 15;
+human.visible = false;
 
 gameState = "playing";
 document.getElementById('hud').style.display = 'block';
