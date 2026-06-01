@@ -41,7 +41,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x112244);
 scene.fog = new THREE.Fog(0x112244, 500, 3000);
 
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 4000);
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
 
 scene.add(new THREE.AmbientLight(0xaaaaaa, 1.8));
 const dirLight = new THREE.DirectionalLight(0xffffff, 3);
@@ -64,9 +64,11 @@ const worldTypes = [
 
 let currentPlanet = {...worldTypes[5]};
 
-const terrainSize = 4000;
-const segments = 128;
+const terrainSize = 800;
+const segments = 64;
 let terrain;
+let terrainCenterX = 0;
+let terrainCenterZ = 0;
 
 function generateTerrain() {
     if (terrain) scene.remove(terrain);
@@ -74,13 +76,15 @@ function generateTerrain() {
     const material = new THREE.MeshPhongMaterial({ vertexColors: true, flatShading: true });
     terrain = new THREE.Mesh(geometry, material);
     terrain.rotation.x = -Math.PI / 2;
+    terrain.position.x = terrainCenterX;
+    terrain.position.z = terrainCenterZ;
 
     const vertexColors = new Float32Array((segments+1)*(segments+1)*3);
     const positions = geometry.attributes.position.array;
 
     for (let i = 0, j = 0; i < positions.length; i += 3, j += 3) {
-        const x = positions[i];
-        const z = positions[i + 2];
+        const x = positions[i] + terrainCenterX;
+        const z = positions[i + 2] + terrainCenterZ;
         const noise = Math.sin(x / 60) * Math.cos(z / 50) + Math.random() * 0.6;
         const isGrass = noise > 0.1;
         const baseColor = isGrass ? currentPlanet.grass : currentPlanet.dirt;
@@ -103,23 +107,204 @@ scene.add(human);
 human.position.set(0, 15, 0);
 
 let gameState = "playing";
+let controlMode = "on_foot";
+let playerYaw = Math.PI;
+let cameraPitch = 0.4;
+let currentSituation = "travel";
+
+const char = { stats: { Edge: 2, Heart: 2, Iron: 2, Shadow: 2, Wits: 2 }, meters: { Health: 5, Spirit: 5, Supply: 5, Momentum: 2 }, progress: 0 };
+
+const oracles = {
+    travel: ["Smooth hyperspace jump", "Pirate intercept", "Derelict signal", "Nebula interference"],
+    combat: ["Enemy fighter engages", "Shield overload", "You gain targeting lock", "Hull breach sustained"],
+    conversation: ["Station hails peacefully", "Captain demands tribute", "AI reveals coordinates", "Faction turns hostile"],
+    obstacle: ["Asteroid field clears", "System glitch arises", "Partial scan success", "Full system failure with cost"]
+};
+
+let rollResult = null;
+let lastReaction = "";
+let rolling = false;
+let rollFrame = 0;
 let keys = {};
+
 window.addEventListener('keydown', e => keys[e.key] = true);
 window.addEventListener('keyup', e => keys[e.key] = false);
 
+function randomChoice(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+function ironswornRoll(stat) {
+    const action = Math.floor(Math.random() * 6) + 1;
+    const c1 = Math.floor(Math.random() * 10) + 1;
+    const c2 = Math.floor(Math.random() * 10) + 1;
+    const total = action + stat;
+    if (total > Math.max(c1, c2)) return {text: "Strong Hit", action, c1, c2};
+    if (total > Math.min(c1, c2)) return {text: "Weak Hit", action, c1, c2};
+    return {text: "Miss", action, c1, c2};
+}
+
+function updateHUD() {
+    let html = '';
+    Object.keys(char.meters).forEach(key => {
+        const val = char.meters[key];
+        const perc = key === "Momentum" ? ((val + 6) / 16 * 100) : (val / 5 * 100);
+        html += `<div style="display:flex;align-items:center;margin:4px 0;"><span style="width:90px;">${key}</span><div style="flex:1;background:#333;height:12px;border-radius:6px;overflow:hidden;"><div style="width:${Math.max(0,perc)}%;height:100%;background:${val>2?'#0f0':'#f00'};"></div></div><span style="margin-left:10px;">${val}</span></div>`;
+    });
+    document.getElementById('meters').innerHTML = html;
+    document.getElementById('progress').innerHTML = `Progress: <div style="background:#333;height:14px;border-radius:7px;overflow:hidden;display:inline-block;width:180px;"><div style="width:${char.progress*10}%;height:100%;background:#0cf;"></div></div>`;
+    document.getElementById('planetInfo').innerHTML = `Planet: <span style="color:#ff0;">${currentPlanet.name}</span>`;
+    document.getElementById('situationText').textContent = currentSituation.toUpperCase();
+}
+
+function travelToNewPlanet() {
+    rollResult = ironswornRoll(char.stats.Wits);
+    lastReaction = randomChoice(oracles.travel);
+    const diceEl = document.getElementById('dice');
+    diceEl.style.display = 'block';
+    document.getElementById('diceAction').textContent = rollResult.action;
+    document.getElementById('diceC1').textContent = rollResult.c1;
+    document.getElementById('diceC2').textContent = rollResult.c2;
+    document.getElementById('outcomeText').innerHTML = `<span style="color:${rollResult.text==="Strong Hit"?"#0f0":rollResult.text==="Weak Hit"?"#ff0":"#f00"};">${rollResult.text} - Jumping...</span>`;
+    document.getElementById('reaction').innerHTML = `<b>Reaction:</b><br>${lastReaction}`;
+    document.getElementById('reaction').style.display = 'block';
+    if (rollResult.text === "Miss") return;
+    currentPlanet = {...worldTypes[Math.floor(Math.random() * worldTypes.length)]};
+    generateTerrain();
+    updateHUD();
+    ship.position.y = 80;
+    setTimeout(() => { ship.position.y = 20; }, 800);
+}
+
 function animate() {
     requestAnimationFrame(animate);
-    if (keys["ArrowLeft"]) ship.position.x -= 4;
-    if (keys["ArrowRight"]) ship.position.x += 4;
-    if (keys["ArrowUp"]) ship.position.z -= 4;
-    if (keys["ArrowDown"]) ship.position.z += 4;
-    camera.position.set(ship.position.x, 80, ship.position.z + 150);
-    camera.lookAt(ship.position);
+    const speed = 5;
+    const target = controlMode === "on_foot" ? human : ship;
+
+    if (gameState === "playing") {
+        if (keys["Shift"]) {
+            if (keys["ArrowLeft"]) playerYaw -= 0.05;
+            if (keys["ArrowRight"]) playerYaw += 0.05;
+            target.rotation.y = playerYaw;
+        }
+        if (keys["q"] || keys["Q"]) cameraPitch = Math.min(1.2, cameraPitch + 0.03);
+        if (keys["z"] || keys["Z"]) cameraPitch = Math.max(-0.6, cameraPitch - 0.03);
+
+        const forwardX = Math.sin(playerYaw);
+        const forwardZ = Math.cos(playerYaw);
+        const strafeX = Math.sin(playerYaw + Math.PI / 2);
+        const strafeZ = Math.cos(playerYaw + Math.PI / 2);
+
+        if (keys["ArrowUp"]) { target.position.x += forwardX * speed; target.position.z += forwardZ * speed; }
+        if (keys["ArrowDown"]) { target.position.x -= forwardX * speed; target.position.z -= forwardZ * speed; }
+        if (keys["ArrowLeft"]) { target.position.x += strafeX * speed * 0.7; target.position.z += strafeZ * speed * 0.7; }
+        if (keys["ArrowRight"]) { target.position.x -= strafeX * speed * 0.7; target.position.z -= strafeZ * speed * 0.7; }
+
+        if (controlMode === "on_foot") target.position.y = 15;
+
+        // Treadmill terrain update
+        const distFromCenter = Math.sqrt(Math.pow(target.position.x - terrainCenterX, 2) + Math.pow(target.position.z - terrainCenterZ, 2));
+        if (distFromCenter > 200) {
+            terrainCenterX = Math.round(target.position.x / 100) * 100;
+            terrainCenterZ = Math.round(target.position.z / 100) * 100;
+            generateTerrain();
+        }
+
+        if (keys["e"] || keys["E"]) {
+            if (controlMode === "on_foot") {
+                const dist = human.position.distanceTo(ship.position);
+                if (dist < 50) {
+                    controlMode = "in_ship";
+                    human.visible = false;
+                    playerYaw = ship.rotation.y;
+                }
+            } else {
+                controlMode = "on_foot";
+                human.position.copy(ship.position);
+                human.position.y = 15;
+                human.visible = true;
+                playerYaw = ship.rotation.y;
+            }
+            keys["e"] = keys["E"] = false;
+        }
+
+        if ((keys["l"] || keys["L"]) && controlMode === "in_ship") {
+            ship.position.y = 10;
+            keys["l"] = keys["L"] = false;
+        }
+
+        if ((keys["t"] || keys["T"]) && controlMode === "in_ship") {
+            travelToNewPlanet();
+            keys["t"] = keys["T"] = false;
+        }
+
+        if (keys["r"] || keys["R"]) {
+            rolling = true;
+            rollFrame = 0;
+            keys["r"] = keys["R"] = false;
+        }
+        if (rolling) {
+            rollFrame++;
+            if (rollFrame > 25) {
+                rollResult = ironswornRoll(char.stats.Wits);
+                lastReaction = randomChoice(oracles[currentSituation]);
+                rolling = false;
+
+                if (rollResult.text === "Strong Hit") {
+                    char.progress = Math.min(10, char.progress + 3);
+                    char.meters.Momentum = Math.min(10, char.meters.Momentum + 1);
+                } else if (rollResult.text === "Weak Hit") {
+                    char.progress = Math.min(10, char.progress + 1);
+                    char.meters.Supply = Math.max(0, char.meters.Supply - 1);
+                } else {
+                    char.meters.Health = Math.max(0, char.meters.Health - 1);
+                    char.meters.Momentum = Math.max(-6, char.meters.Momentum - 2);
+                }
+                updateHUD();
+
+                const diceEl = document.getElementById('dice');
+                diceEl.style.display = 'block';
+                document.getElementById('diceAction').textContent = rollResult.action;
+                document.getElementById('diceC1').textContent = rollResult.c1;
+                document.getElementById('diceC2').textContent = rollResult.c2;
+                document.getElementById('outcomeText').innerHTML = `<span style="color:${rollResult.text==="Strong Hit"?"#0f0":rollResult.text==="Weak Hit"?"#ff0":"#f00"};">${rollResult.text}</span>`;
+                document.getElementById('reaction').innerHTML = `<b>Reaction:</b><br>${lastReaction}`;
+                document.getElementById('reaction').style.display = 'block';
+            }
+        }
+
+        if (keys["t"] || keys["T"]) currentSituation = "travel";
+        if (keys["c"] || keys["C"]) currentSituation = "combat";
+        if (keys["v"] || keys["V"]) currentSituation = "conversation";
+        if (keys["o"] || keys["O"]) currentSituation = "obstacle";
+
+        if (currentSituation === "travel" && (keys["ArrowUp"] || keys["ArrowDown"] || keys["ArrowLeft"] || keys["ArrowRight"])) {
+            char.progress = Math.min(10, char.progress + 1);
+            updateHUD();
+        }
+    }
+
+    const target = controlMode === "on_foot" ? human : ship;
+    const camDistance = 150;
+    const camX = target.position.x + Math.sin(playerYaw + Math.PI) * camDistance * Math.cos(cameraPitch);
+    const camZ = target.position.z + Math.cos(playerYaw + Math.PI) * camDistance * Math.cos(cameraPitch);
+    const camY = target.position.y + camDistance * Math.sin(cameraPitch) + (controlMode === "on_foot" ? 30 : 60);
+
+    camera.position.x = camera.position.x * 0.85 + camX * 0.15;
+    camera.position.y = camera.position.y * 0.85 + camY * 0.15;
+    camera.position.z = camera.position.z * 0.85 + camZ * 0.15;
+    camera.lookAt(target.position);
+
     renderer.render(scene, camera);
 }
 animate();
 
-console.log("Flat 4000x4000 varied terrain loaded");
+// Proper starting spawn
+human.position.set(0, 15, 0);
+ship.position.set(80, 30, 100);
+
+gameState = "playing";
+document.getElementById('hud').style.display = 'block';
+document.getElementById('status').style.display = 'block';
+updateHUD();
 </script>
 </body>
 </html>
