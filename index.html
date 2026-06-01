@@ -41,7 +41,7 @@
     </div>
 
 <script>
-// Starforged 3D + The Perilous Void - fixed terrain lighting
+// Starforged 3D + The Perilous Void - MINECRAFT-STYLE BLOCKY TERRAIN
 const canvas = document.getElementById('canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
 renderer.setSize(800, 600);
@@ -52,56 +52,69 @@ scene.fog = new THREE.Fog(0x112211, 300, 2200);
 
 const camera = new THREE.PerspectiveCamera(60, 800/600, 0.1, 3000);
 
-scene.add(new THREE.AmbientLight(0xaaaaaa, 0.8));
-const dirLight = new THREE.DirectionalLight(0xffffff, 3.0);
+scene.add(new THREE.AmbientLight(0xaaaaaa, 1.4));
+const dirLight = new THREE.DirectionalLight(0xffffff, 2.8);
 dirLight.position.set(200, 300, 100);
 scene.add(dirLight);
-const fillLight = new THREE.DirectionalLight(0xffffff, 1.5);
-fillLight.position.set(-150, 100, -200);
+const fillLight = new THREE.DirectionalLight(0x88aaff, 1.6);
+fillLight.position.set(-200, 150, -150);
 scene.add(fillLight);
+const hemiLight = new THREE.HemisphereLight(0xaaccff, 0x334422, 0.9);
+scene.add(hemiLight);
 
-// Perilous Void world types - brighter colors for visibility
+// Perilous Void world types
 const worldTypes = [
-    {name: "Barren World", color: 0x666666, heightVar: 12},
-    {name: "Frozen World", color: 0xaaccee, heightVar: 28},
-    {name: "Arid World", color: 0xeeddaa, heightVar: 15},
-    {name: "Oceanic World", color: 0x2288dd, heightVar: 8},
-    {name: "Arboreal World", color: 0x338833, heightVar: 22},
-    {name: "Earthlike World", color: 0x44aa44, heightVar: 18},
-    {name: "Volcanic World", color: 0xcc6644, heightVar: 26},
-    {name: "Metallic World", color: 0x999999, heightVar: 14}
+    {name: "Barren World", color: 0x777777, heightVar: 6},
+    {name: "Frozen World", color: 0xaaddff, heightVar: 8},
+    {name: "Arid World", color: 0xffeecc, heightVar: 5},
+    {name: "Oceanic World", color: 0x2288dd, heightVar: 3},
+    {name: "Arboreal World", color: 0x44aa55, heightVar: 7},
+    {name: "Earthlike World", color: 0x55bb66, heightVar: 6},
+    {name: "Volcanic World", color: 0xdd7744, heightVar: 9},
+    {name: "Metallic World", color: 0xaaaaaa, heightVar: 4}
 ];
 
-let currentPlanet = {...worldTypes[5]}; // start with Earthlike
+let currentPlanet = {...worldTypes[5]};
 
-// Improved 2000x2000 procedural terrain
 const mapSize = 2000;
-const terrainSegments = 256;
-let terrain;
+const blockSize = 32; // Minecraft-style block size
+const gridSize = 64;  // 64x64 blocks visible area
+let terrainBlocks = [];
+
+// Minecraft-style blocky terrain
 function generateTerrain() {
-    if (terrain) scene.remove(terrain);
-    terrain = new THREE.Mesh(
-        new THREE.PlaneGeometry(mapSize, mapSize, terrainSegments, terrainSegments),
-        new THREE.MeshPhongMaterial({ color: currentPlanet.color, flatShading: true, shininess: 5 })
-    );
-    terrain.rotation.x = -Math.PI / 2;
-    const vertices = terrain.geometry.attributes.position.array;
-    for (let i = 0; i < vertices.length; i += 3) {
-        const x = vertices[i];
-        const z = vertices[i + 2];
-        let height = Math.sin(x / 80) * currentPlanet.heightVar +
-                     Math.sin(z / 60) * (currentPlanet.heightVar * 0.9) +
-                     Math.sin((x + z) / 40) * (currentPlanet.heightVar * 0.6) +
-                     Math.random() * 18 - 9;
-        vertices[i + 1] = height;
+    terrainBlocks.forEach(b => scene.remove(b));
+    terrainBlocks = [];
+
+    const half = gridSize * blockSize / 2;
+
+    for (let x = 0; x < gridSize; x++) {
+        for (let z = 0; z < gridSize; z++) {
+            const worldX = (x - gridSize/2) * blockSize;
+            const worldZ = (z - gridSize/2) * blockSize;
+
+            let height = Math.sin(worldX / 180) * currentPlanet.heightVar +
+                         Math.sin(worldZ / 140) * (currentPlanet.heightVar * 0.8) +
+                         Math.sin((worldX + worldZ) / 80) * (currentPlanet.heightVar * 0.6) +
+                         Math.random() * 4;
+
+            height = Math.max(1, Math.floor(height)); // blocky steps
+
+            for (let y = 0; y < height; y++) {
+                const block = new THREE.Mesh(
+                    new THREE.BoxGeometry(blockSize, blockSize, blockSize),
+                    new THREE.MeshPhongMaterial({ color: currentPlanet.color, flatShading: true })
+                );
+                block.position.set(worldX, y * blockSize + blockSize/2, worldZ);
+                scene.add(block);
+                terrainBlocks.push(block);
+            }
+        }
     }
-    terrain.geometry.attributes.position.needsUpdate = true;
-    terrain.geometry.computeVertexNormals();
-    scene.add(terrain);
 }
 generateTerrain();
 
-// Villages and villagers (Perilous Void style)
+// Villages and villagers (simple)
 const villageGroup = new THREE.Group();
 function generateVillages() {
     villageGroup.clear();
@@ -131,7 +144,7 @@ function generateVillages() {
 }
 generateVillages();
 
-// Human and ship (same)
+// Human and ship
 const human = new THREE.Group();
 const humanBody = new THREE.Mesh(new THREE.CylinderGeometry(6, 6, 20, 8), new THREE.MeshPhongMaterial({ color: 0x2288ff }));
 humanBody.position.y = 15;
@@ -337,3 +350,4 @@ document.getElementById('status').style.display = 'block';
 updateHUD();
 </script>
 </body>
+</html>
