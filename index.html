@@ -14,6 +14,7 @@
         .controlSection { margin:5px 0; }
         .controlKey { color:#0ff; font-weight:bold; }
         .controlDesc { color:#aaa; }
+        #travelStatus { position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(0,0,0,0.9); padding:40px; border:3px solid #0ff; border-radius:8px; font-size:24px; display:none; text-align:center; pointer-events:auto; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
 </head>
@@ -45,6 +46,10 @@
                 Situation: <span id="situationText" style="color:#ff0;" aria-live="polite"></span>
             </div>
             <div id="reaction" style="position:absolute; top:80px; right:10px; background:rgba(0,0,0,0.7); padding:15px; max-width:300px; display:none; font-size:12px;"></div>
+
+            <div id="travelStatus">
+                <div id="travelStatusText"></div>
+            </div>
 
             <div id="dice">
                 <div style="display:flex; gap:10px;">
@@ -237,6 +242,7 @@ let controlMode = "in_ship";
 let playerYaw = Math.PI;
 let cameraPitch = 0.4;
 let currentSituation = "travel";
+let travelInProgress = false;
 
 const char = { 
     stats: { Edge: 2, Heart: 2, Iron: 2, Shadow: 2, Wits: 2 }, 
@@ -742,35 +748,183 @@ function updateHUD() {
     document.getElementById('meters').innerHTML = html;
     
     const progressPerc = (char.progress / 10) * 100;
-    document.getElementById('progress').innerHTML = `Progress: <span style="color:#0f0;">${char.progress}/10</span><div style="background:#333;height:14px;border-radius:7px;overflow:hidden;display:inline-block;width:180px;"><div style="width:${progressPerc}%;height:100%;background:#0f0;"></div></div>`;
+    document.getElementById('progress').innerHTML = `Progress: <span style="color:#0f0;">${char.progress}/10</span><div style="background:#333;height:14px;border-radius:7px;overflow:hidden;display:inline-block;width:100%;"><div style="width:${progressPerc}%;height:100%;background:#0f0;"></div></div>`;
     
     document.getElementById('planetInfo').innerHTML = `Planet: <span style="color:#ff0;">${currentPlanet.name}</span>`;
     document.getElementById('situationText').textContent = currentSituation.toUpperCase();
 }
 
+function createEngineTrail(startPos, endPos, duration) {
+    let elapsed = 0;
+    const trailGroup = new THREE.Group();
+    scene.add(trailGroup);
+
+    const segments = 20;
+    for (let i = 0; i < segments; i++) {
+        const t = i / segments;
+        const x = startPos.x + (endPos.x - startPos.x) * t;
+        const y = startPos.y + (endPos.y - startPos.y) * t;
+        const z = startPos.z + (endPos.z - startPos.z) * t;
+
+        const particle = new THREE.Mesh(
+            new THREE.SphereGeometry(8 + Math.random() * 12, 8, 8),
+            new THREE.MeshPhongMaterial({ 
+                color: Math.random() > 0.5 ? 0xff6600 : 0xffaa00, 
+                emissive: Math.random() > 0.5 ? 0xff6600 : 0xffaa00,
+                transparent: true,
+                opacity: 0.8
+            })
+        );
+        particle.position.set(x, y, z);
+        particle.velocityX = (Math.random() - 0.5) * 5;
+        particle.velocityY = (Math.random() - 0.5) * 5;
+        particle.velocityZ = (Math.random() - 0.5) * 5;
+        particle.life = duration;
+        trailGroup.add(particle);
+    }
+
+    // Animate trail
+    const trailInterval = setInterval(() => {
+        elapsed += 16;
+        trailGroup.children.forEach(p => {
+            p.position.x += p.velocityX;
+            p.position.y += p.velocityY;
+            p.position.z += p.velocityZ;
+            p.life -= 16;
+            p.material.opacity = Math.max(0, (p.life / duration) * 0.8);
+            p.velocityY -= 0.2; // gravity
+        });
+
+        if (elapsed > duration) {
+            clearInterval(trailInterval);
+            trailGroup.children.forEach(p => {
+                if (p.geometry) p.geometry.dispose();
+                if (p.material) p.material.dispose();
+            });
+            scene.remove(trailGroup);
+        }
+    }, 16);
+}
+
 function travelToNewPlanet() {
-    rollResult = ironswornRoll(char.stats.Wits);
-    lastReaction = randomChoice(oracles.travel);
-    const diceEl = document.getElementById('dice');
-    diceEl.style.display = 'block';
-    document.getElementById('diceAction').textContent = rollResult.action;
-    document.getElementById('diceC1').textContent = rollResult.c1;
-    document.getElementById('diceC2').textContent = rollResult.c2;
-    
-    const outcomeColor = rollResult.text === "Strong Hit" ? "#0f0" : rollResult.text === "Weak Hit" ? "#ff0" : "#f00";
-    document.getElementById('outcomeText').innerHTML = `<span style="color:${outcomeColor};">${rollResult.text} - Jumping...</span>`;
-    document.getElementById('reaction').innerHTML = `<b>Reaction:</b><br>${lastReaction}`;
-    document.getElementById('reaction').style.display = 'block';
+    if (travelInProgress) return;
+    travelInProgress = true;
 
-    if (rollResult.text === "Miss") return;
+    const startPos = ship.position.clone();
+    const statusDiv = document.getElementById('travelStatus');
+    statusDiv.style.display = 'block';
 
-    currentPlanet = {...worldTypes[Math.floor(Math.random() * worldTypes.length)]};
-    generateTerrain();
-    generateVillages();
-    updateHUD();
+    // Takeoff phase (2 seconds)
+    let takeoffTime = 0;
+    const takeoffDuration = 2000;
 
-    ship.position.y = 80;
-    setTimeout(() => { ship.position.y = 20; }, 800);
+    const takeoffInterval = setInterval(() => {
+        takeoffTime += 16;
+        const progress = takeoffTime / takeoffDuration;
+
+        document.getElementById('travelStatusText').textContent = `ENGAGING THRUSTERS... ${Math.floor(progress * 100)}%`;
+
+        // Move ship upward and forward
+        ship.position.y = startPos.y + progress * 400;
+        ship.position.z = startPos.z + progress * 200;
+        
+        // Add rotation for dramatic effect
+        ship.rotation.x = progress * 0.3;
+
+        // Create engine trails every frame during takeoff
+        if (Math.random() > 0.3) {
+            createEngineTrail(
+                {x: ship.position.x - 20, y: ship.position.y - 30, z: ship.position.z},
+                {x: ship.position.x - 20 + (Math.random() - 0.5) * 50, y: ship.position.y - 100, z: ship.position.z + (Math.random() - 0.5) * 50},
+                800
+            );
+        }
+
+        if (takeoffTime >= takeoffDuration) {
+            clearInterval(takeoffInterval);
+
+            // Space travel phase (2 seconds) - warp effect
+            let warpTime = 0;
+            const warpDuration = 2000;
+
+            const warpInterval = setInterval(() => {
+                warpTime += 16;
+                const warpProgress = warpTime / warpDuration;
+
+                document.getElementById('travelStatusText').textContent = `ENGAGING WARP DRIVE... ${Math.floor(warpProgress * 100)}%`;
+
+                // Fast horizontal movement
+                ship.position.x += Math.sin(warpTime / 100) * 8;
+                ship.position.y += 400;
+
+                // Spin effect
+                ship.rotation.y += 0.1;
+                ship.rotation.z += 0.05;
+
+                if (warpTime >= warpDuration) {
+                    clearInterval(warpInterval);
+
+                    // Landing phase (2 seconds)
+                    const newPlanet = {...worldTypes[Math.floor(Math.random() * worldTypes.length)]};
+                    currentPlanet = newPlanet;
+                    generateTerrain();
+                    generateVillages();
+
+                    let landingTime = 0;
+                    const landingDuration = 2000;
+                    const landingStartPos = ship.position.clone();
+                    const landingY = 80;
+
+                    const landingInterval = setInterval(() => {
+                        landingTime += 16;
+                        const landingProgress = landingTime / landingDuration;
+
+                        document.getElementById('travelStatusText').textContent = `ARRIVING AT ${currentPlanet.name.toUpperCase()}... ${Math.floor(landingProgress * 100)}%`;
+
+                        // Descend
+                        ship.position.y = landingStartPos.y - landingProgress * (landingStartPos.y - landingY);
+
+                        // Slow rotation
+                        ship.rotation.x = (1 - landingProgress) * 0.3;
+                        ship.rotation.y = landingStartPos.y * (1 - landingProgress) * 0.02;
+                        ship.rotation.z = 0;
+
+                        // Landing trail
+                        if (Math.random() > 0.2) {
+                            createEngineTrail(
+                                {x: ship.position.x + (Math.random() - 0.5) * 40, y: ship.position.y + 50, z: ship.position.z + (Math.random() - 0.5) * 40},
+                                {x: ship.position.x + (Math.random() - 0.5) * 40, y: ship.position.y - 80, z: ship.position.z + (Math.random() - 0.5) * 40},
+                                600
+                            );
+                        }
+
+                        if (landingTime >= landingDuration) {
+                            clearInterval(landingInterval);
+                            statusDiv.style.display = 'none';
+
+                            // Roll dice for travel
+                            rollResult = ironswornRoll(char.stats.Wits);
+                            lastReaction = randomChoice(oracles.travel);
+
+                            const diceEl = document.getElementById('dice');
+                            diceEl.style.display = 'block';
+                            document.getElementById('diceAction').textContent = rollResult.action;
+                            document.getElementById('diceC1').textContent = rollResult.c1;
+                            document.getElementById('diceC2').textContent = rollResult.c2;
+                            
+                            const outcomeColor = rollResult.text === "Strong Hit" ? "#0f0" : rollResult.text === "Weak Hit" ? "#ff0" : "#f00";
+                            document.getElementById('outcomeText').innerHTML = `<span style="color:${outcomeColor};">${rollResult.text}</span>`;
+                            document.getElementById('reaction').innerHTML = `<b>Reaction:</b><br>${lastReaction}`;
+                            document.getElementById('reaction').style.display = 'block';
+
+                            updateHUD();
+                            travelInProgress = false;
+                        }
+                    }, 16);
+                }
+            }, 16);
+        }
+    }, 16);
 }
 
 function wrapPosition(pos) {
@@ -788,7 +942,7 @@ function animate() {
     const verticalSpeed = 3;
     const target = controlMode === "on_foot" ? human : ship;
 
-    if (gameState === "playing") {
+    if (gameState === "playing" && !travelInProgress) {
         // Rotation control with Shift
         if (keys["Shift"]) {
             if (keys["ArrowLeft"]) playerYaw -= 0.05;
