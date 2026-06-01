@@ -16,7 +16,7 @@ class Character:
         self.stats = {"Edge": 2, "Heart": 2, "Iron": 2, "Shadow": 2, "Wits": 2}
         self.meters = {"Health": 5, "Spirit": 5, "Supply": 5, "Momentum": 2}
         self.progress = 0
-        self.selected_stat = 0  # index for creation
+        self.selected_stat = 0
 
     def get_stat_list(self):
         return list(self.stats.keys())
@@ -29,6 +29,21 @@ class Character:
             text = font.render(f"{name}: {self.stats[name]}", True, color)
             surface.blit(text, (100, y))
             y += 50
+
+    def draw_hud(self, surface):
+        y = 20
+        for name, value in self.meters.items():
+            text = font.render(f"{name}: {value}", True, (255, 255, 255))
+            surface.blit(text, (20, y))
+            pygame.draw.rect(surface, (100, 100, 100), (200, y + 5, 200, 20))
+            fill_width = int((value / 5) * 200) if name != "Momentum" else int(((value + 6) / 16) * 200)
+            color = (0, 255, 0) if value > 2 else (255, 0, 0)
+            pygame.draw.rect(surface, color, (200, y + 5, fill_width, 20))
+            y += 40
+        text = font.render("Progress Track: ", True, (255, 255, 255))
+        surface.blit(text, (20, y))
+        pygame.draw.rect(surface, (100, 100, 100), (200, y + 5, 200, 20))
+        pygame.draw.rect(surface, (0, 200, 255), (200, y + 5, int(self.progress / 10 * 200), 20))
 
 class Oracle:
     def __init__(self):
@@ -94,6 +109,18 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+        if event.type == pygame.KEYDOWN and game_state == "playing":
+            if event.key == pygame.K_r:
+                rolling = True
+                frame = 0
+            if event.key == pygame.K_t:
+                current_state = "travel"
+            if event.key == pygame.K_c:
+                current_state = "combat"
+            if event.key == pygame.K_v:
+                current_state = "conversation"
+            if event.key == pygame.K_o:
+                current_state = "obstacle"
 
     keys = pygame.key.get_pressed()
 
@@ -104,12 +131,11 @@ while running:
         total_color = (0, 255, 0) if total == 10 else (255, 100, 100)
         total_text = small_font.render(f"Total points: {total} / 10", True, total_color)
         screen.blit(total_text, (80, 80))
-        instr = small_font.render("← → = select stat   ↑ ↓ = change value   ENTER = Start Game (total must be 10)", True, (200, 200, 200))
-        screen.blit(instr, (50, 520))
+        instr = small_font.render("← → Select stat    ↑ ↓ Change value    ENTER Start Game (when total = 10)", True, (200, 200, 200))
+        screen.blit(instr, (30, 520))
 
         char.draw_stats(screen, creation_mode=True)
 
-        # Stat selection and adjustment
         if keys[pygame.K_LEFT]:
             char.selected_stat = (char.selected_stat - 1) % 5
         if keys[pygame.K_RIGHT]:
@@ -123,22 +149,7 @@ while running:
         if keys[pygame.K_RETURN] and total == 10:
             game_state = "playing"
 
-    else:  # playing state
-        # (the rest of the game loop from the previous version - movement, rolling, etc.)
-        # ... [same as last version] ...
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_r:
-                rolling = True
-                frame = 0
-            if event.key == pygame.K_t:
-                current_state = "travel"
-            if event.key == pygame.K_c:
-                current_state = "combat"
-            if event.key == pygame.K_v:
-                current_state = "conversation"
-            if event.key == pygame.K_o:
-                current_state = "obstacle"
-
+    else:
         move_speed = 5
         if keys[pygame.K_LEFT]:
             ship_x -= move_speed
@@ -184,10 +195,10 @@ while running:
         ship_color = (0, 255, 255) if not roll_result or roll_result[0] != "Miss" else (255, 100, 100)
         pygame.draw.polygon(screen, ship_color, [(ship_x, ship_y), (ship_x + 30, ship_y + 20), (ship_x, ship_y + 40)])
 
-        if current_state == "travel" and (keys[pygame.K_LEFT] or keys[pygame.K_RIGHT] or keys[pygame.K_UP] or keys[pygame.K_DOWN]):
+        if current_state == "travel" and any(keys[k] for k in [pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN]):
             char.progress = min(10, char.progress + 1)
 
-        instr = small_font.render("Arrows=Move | R=Roll | T=Travel | C=Combat | V=Conv | O=Obstacle", True, (150, 150, 150))
+        instr = small_font.render("Arrows = Move Ship | R = Roll | T = Travel | C = Combat | V = Conversation | O = Obstacle", True, (150, 150, 150))
         screen.blit(instr, (20, 550))
 
     pygame.display.flip()
