@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Starforged 3D - Full Solo Sci-Fi TTRPG</title>
+    <title>Starforged 3D - The Perilous Void Edition</title>
     <style>
         body { margin:0; background:#000; font-family:Arial; color:#fff; overflow:hidden; }
         canvas { display:block; }
@@ -15,9 +15,10 @@
 <body>
     <canvas id="canvas"></canvas>
     <div id="overlay">
-        <div id="hud" class="hud" style="top:10px; left:10px; width:220px; display:none;">
+        <div id="hud" class="hud" style="top:10px; left:10px; width:240px; display:none;">
             <div id="meters"></div>
             <div id="progress" style="margin-top:10px;"></div>
+            <div id="planetInfo" style="margin-top:10px; font-size:14px; color:#0ff;"></div>
         </div>
 
         <div id="status" style="position:absolute; top:10px; right:10px; background:rgba(0,0,0,0.7); padding:10px; border:2px solid #0ff; display:none;">
@@ -35,12 +36,12 @@
         </div>
 
         <p style="position:absolute; bottom:10px; left:10px; font-size:14px; color:#aaa;">
-            Arrows = Move • R = Roll • T/C/V/O = Situation • E = Board/Exit Ship • L = Land Ship (in ship) • Shift + Left/Right = Rotate Camera
+            Arrows = Move (relative to facing) • Shift + Left/Right = Rotate Player • R = Roll • T = Travel to New Planet (in ship) • E = Board/Exit Ship • L = Land Ship
         </p>
     </div>
 
 <script>
-// Starforged 3D full prototype - improved terrain and centered rotatable camera
+// Starforged 3D + The Perilous Void integration - full procedural planet travel
 const canvas = document.getElementById('canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
 renderer.setSize(800, 600);
@@ -50,63 +51,85 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x112211, 300, 2200);
 
 const camera = new THREE.PerspectiveCamera(60, 800/600, 0.1, 3000);
-const cameraYaw = { value: Math.PI }; // start behind character
 
 scene.add(new THREE.AmbientLight(0xaaaaaa, 0.6));
 const dirLight = new THREE.DirectionalLight(0xffffff, 1);
 dirLight.position.set(200, 300, 100);
 scene.add(dirLight);
 
-// 2000x2000 Minecraft-style procedural terrain
+// Perilous Void world types (from PDF World Creation tables)
+const worldTypes = [
+    {name: "Barren World", color: 0x555555, heightVar: 8},
+    {name: "Frozen World", color: 0x88aaff, heightVar: 25},
+    {name: "Arid World", color: 0xccaa77, heightVar: 12},
+    {name: "Oceanic World", color: 0x0066aa, heightVar: 6},
+    {name: "Arboreal World", color: 0x226622, heightVar: 18},
+    {name: "Earthlike World", color: 0x44aa44, heightVar: 15},
+    {name: "Volcanic World", color: 0xaa4422, heightVar: 22},
+    {name: "Metallic World", color: 0x777777, heightVar: 10}
+];
+
+let currentPlanet = {name: "Unknown Frontier", color: 0x225522, heightVar: 15};
+
+// 2000x2000 procedural terrain (Perilous Void style)
 const mapSize = 2000;
 const terrainSegments = 256;
-const terrain = new THREE.Mesh(
-    new THREE.PlaneGeometry(mapSize, mapSize, terrainSegments, terrainSegments),
-    new THREE.MeshPhongMaterial({ color: 0x225522, flatShading: true })
-);
-terrain.rotation.x = -Math.PI / 2;
-const vertices = terrain.geometry.attributes.position.array;
-for (let i = 0; i < vertices.length; i += 3) {
-    const x = vertices[i];
-    const z = vertices[i + 2];
-    let height = 0;
-    height += Math.sin(x / 120) * 28;
-    height += Math.sin(z / 90) * 22;
-    height += Math.sin((x + z) / 60) * 12;
-    height += Math.random() * 9 - 4.5; // blocky noise
-    vertices[i + 1] = height;
-}
-terrain.geometry.attributes.position.needsUpdate = true;
-terrain.geometry.computeVertexNormals();
-scene.add(terrain);
-
-// Random villages and villagers (same as before)
-const villageGroup = new THREE.Group();
-for (let i = 0; i < 8; i++) {
-    const villageX = (Math.random() - 0.5) * mapSize * 0.8;
-    const villageZ = (Math.random() - 0.5) * mapSize * 0.8;
-    const house = new THREE.Mesh(new THREE.BoxGeometry(30, 25, 30), new THREE.MeshPhongMaterial({ color: 0x884422 }));
-    house.position.set(villageX, 12.5, villageZ);
-    villageGroup.add(house);
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(22, 15, 4), new THREE.MeshPhongMaterial({ color: 0x662211 }));
-    roof.position.set(villageX, 32, villageZ);
-    roof.rotation.y = Math.PI / 4;
-    villageGroup.add(roof);
-    for (let v = 0; v < 3; v++) {
-        const villager = new THREE.Group();
-        const body = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 18, 8), new THREE.MeshPhongMaterial({ color: 0xffaa66 }));
-        body.position.y = 15;
-        villager.add(body);
-        const head = new THREE.Mesh(new THREE.SphereGeometry(6, 12, 12), new THREE.MeshPhongMaterial({ color: 0xffddaa }));
-        head.position.y = 30;
-        villager.add(head);
-        villager.position.set(villageX + (Math.random()-0.5)*40, 0, villageZ + (Math.random()-0.5)*40);
-        villageGroup.add(villager);
+let terrain, groundMat;
+function generateTerrain() {
+    if (terrain) scene.remove(terrain);
+    groundMat = new THREE.MeshPhongMaterial({ color: currentPlanet.color, flatShading: true });
+    terrain = new THREE.Mesh(
+        new THREE.PlaneGeometry(mapSize, mapSize, terrainSegments, terrainSegments),
+        groundMat
+    );
+    terrain.rotation.x = -Math.PI / 2;
+    const vertices = terrain.geometry.attributes.position.array;
+    for (let i = 0; i < vertices.length; i += 3) {
+        const x = vertices[i];
+        const z = vertices[i + 2];
+        let height = Math.sin(x / 120) * currentPlanet.heightVar +
+                     Math.sin(z / 90) * (currentPlanet.heightVar * 0.8) +
+                     Math.sin((x + z) / 60) * (currentPlanet.heightVar * 0.5) +
+                     Math.random() * 12 - 6;
+        vertices[i + 1] = height;
     }
+    terrain.geometry.attributes.position.needsUpdate = true;
+    terrain.geometry.computeVertexNormals();
+    scene.add(terrain);
 }
-scene.add(villageGroup);
+generateTerrain();
 
-// Human and ship (same)
+// Villages (Perilous Void style - simple box houses + villagers)
+const villageGroup = new THREE.Group();
+function generateVillages() {
+    villageGroup.clear();
+    for (let i = 0; i < 8; i++) {
+        const villageX = (Math.random() - 0.5) * mapSize * 0.8;
+        const villageZ = (Math.random() - 0.5) * mapSize * 0.8;
+        const house = new THREE.Mesh(new THREE.BoxGeometry(30, 25, 30), new THREE.MeshPhongMaterial({ color: 0x884422 }));
+        house.position.set(villageX, 12.5, villageZ);
+        villageGroup.add(house);
+        const roof = new THREE.Mesh(new THREE.ConeGeometry(22, 15, 4), new THREE.MeshPhongMaterial({ color: 0x662211 }));
+        roof.position.set(villageX, 32, villageZ);
+        roof.rotation.y = Math.PI / 4;
+        villageGroup.add(roof);
+        for (let v = 0; v < 3; v++) {
+            const villager = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.CylinderGeometry(5, 5, 18, 8), new THREE.MeshPhongMaterial({ color: 0xffaa66 }));
+            body.position.y = 15;
+            villager.add(body);
+            const head = new THREE.Mesh(new THREE.SphereGeometry(6, 12, 12), new THREE.MeshPhongMaterial({ color: 0xffddaa }));
+            head.position.y = 30;
+            villager.add(head);
+            villager.position.set(villageX + (Math.random()-0.5)*40, 0, villageZ + (Math.random()-0.5)*40);
+            villageGroup.add(villager);
+        }
+    }
+    scene.add(villageGroup);
+}
+generateVillages();
+
+// Human and ship (same as before)
 const human = new THREE.Group();
 const humanBody = new THREE.Mesh(new THREE.CylinderGeometry(6, 6, 20, 8), new THREE.MeshPhongMaterial({ color: 0x2288ff }));
 humanBody.position.y = 15;
@@ -128,13 +151,10 @@ ship.position.set(300, 20, 0);
 
 let gameState = "playing";
 let controlMode = "on_foot";
+let playerYaw = Math.PI;
 let currentSituation = "travel";
 
-const char = {
-    stats: { Edge: 2, Heart: 2, Iron: 2, Shadow: 2, Wits: 2 },
-    meters: { Health: 5, Spirit: 5, Supply: 5, Momentum: 2 },
-    progress: 0
-};
+const char = { stats: { Edge: 2, Heart: 2, Iron: 2, Shadow: 2, Wits: 2 }, meters: { Health: 5, Spirit: 5, Supply: 5, Momentum: 2 }, progress: 0 };
 
 const oracles = {
     travel: ["Smooth hyperspace jump", "Pirate intercept", "Derelict signal", "Nebula interference"],
@@ -173,35 +193,61 @@ function updateHUD() {
     });
     document.getElementById('meters').innerHTML = html;
     document.getElementById('progress').innerHTML = `Progress: <div style="background:#333;height:14px;border-radius:7px;overflow:hidden;display:inline-block;width:180px;"><div style="width:${char.progress*10}%;height:100%;background:#0cf;"></div></div>`;
+    document.getElementById('planetInfo').innerHTML = `Planet: <span style="color:#ff0;">${currentPlanet.name}</span>`;
     document.getElementById('situationText').textContent = currentSituation.toUpperCase();
+}
+
+function travelToNewPlanet() {
+    // Perilous Void inspired travel roll (Starforged Journey style)
+    rollResult = ironswornRoll(char.stats.Wits);
+    lastReaction = randomChoice(oracles.travel);
+    const diceEl = document.getElementById('dice');
+    diceEl.style.display = 'block';
+    document.getElementById('diceAction').textContent = rollResult.action;
+    document.getElementById('diceC1').textContent = rollResult.c1;
+    document.getElementById('diceC2').textContent = rollResult.c2;
+    document.getElementById('outcomeText').innerHTML = `<span style="color:${rollResult.text==="Strong Hit"?"#0f0":rollResult.text==="Weak Hit"?"#ff0":"#f00"};">${rollResult.text} - Jumping...</span>`;
+    document.getElementById('reaction').innerHTML = `<b>Reaction:</b><br>${lastReaction}`;
+    document.getElementById('reaction').style.display = 'block';
+
+    if (rollResult.text === "Miss") return; // failed jump - stay on current planet
+
+    // Success - generate new planet from Perilous Void tables
+    currentPlanet = {...worldTypes[Math.floor(Math.random() * worldTypes.length)]};
+    generateTerrain();
+    generateVillages();
+    updateHUD();
+
+    // Simple travel animation
+    ship.position.y = 80;
+    setTimeout(() => { ship.position.y = 20; }, 800);
 }
 
 function animate() {
     requestAnimationFrame(animate);
     const speed = 5;
+    const target = controlMode === "on_foot" ? human : ship;
 
     if (gameState === "playing") {
-        const target = controlMode === "on_foot" ? human : ship;
-
-        if (controlMode === "on_foot") {
-            if (keys["ArrowLeft"]) human.position.x -= speed;
-            if (keys["ArrowRight"]) human.position.x += speed;
-            if (keys["ArrowUp"]) human.position.z -= speed;
-            if (keys["ArrowDown"]) human.position.z += speed;
-            human.position.y = Math.abs(Math.sin(Date.now() / 120)) * 3;
-        } else {
-            if (keys["ArrowLeft"]) ship.position.x -= speed;
-            if (keys["ArrowRight"]) ship.position.x += speed;
-            if (keys["ArrowUp"]) ship.position.z -= speed;
-            if (keys["ArrowDown"]) ship.position.z += speed;
-            ship.rotation.z = (keys["ArrowLeft"] ? 0.15 : 0) + (keys["ArrowRight"] ? -0.15 : 0);
-        }
-
-        // Camera rotation with Shift + Left/Right
+        // Rotate player
         if (keys["Shift"]) {
-            if (keys["ArrowLeft"]) cameraYaw.value -= 0.04;
-            if (keys["ArrowRight"]) cameraYaw.value += 0.04;
+            if (keys["ArrowLeft"]) playerYaw -= 0.05;
+            if (keys["ArrowRight"]) playerYaw += 0.05;
+            target.rotation.y = playerYaw;
         }
+
+        // Movement relative to facing
+        const forwardX = Math.sin(playerYaw);
+        const forwardZ = Math.cos(playerYaw);
+        const strafeX = Math.sin(playerYaw + Math.PI / 2);
+        const strafeZ = Math.cos(playerYaw + Math.PI / 2);
+
+        if (keys["ArrowUp"]) { target.position.x += forwardX * speed; target.position.z += forwardZ * speed; }
+        if (keys["ArrowDown"]) { target.position.x -= forwardX * speed; target.position.z -= forwardZ * speed; }
+        if (keys["ArrowLeft"]) { target.position.x += strafeX * speed * 0.7; target.position.z += strafeZ * speed * 0.7; }
+        if (keys["ArrowRight"]) { target.position.x -= strafeX * speed * 0.7; target.position.z -= strafeZ * speed * 0.7; }
+
+        if (controlMode === "on_foot") target.position.y = Math.abs(Math.sin(Date.now() / 120)) * 3;
 
         // Board / exit ship
         if (keys["e"] || keys["E"]) {
@@ -210,19 +256,28 @@ function animate() {
                 if (dist < 50) {
                     controlMode = "in_ship";
                     human.visible = false;
+                    playerYaw = ship.rotation.y;
                 }
             } else {
                 controlMode = "on_foot";
                 human.position.copy(ship.position);
                 human.position.y = 0;
                 human.visible = true;
+                playerYaw = ship.rotation.y;
             }
             keys["e"] = keys["E"] = false;
         }
 
+        // Land ship
         if ((keys["l"] || keys["L"]) && controlMode === "in_ship") {
             ship.position.y = 10;
             keys["l"] = keys["L"] = false;
+        }
+
+        // Travel to new planet (The Perilous Void integration)
+        if ((keys["t"] || keys["T"]) && controlMode === "in_ship") {
+            travelToNewPlanet();
+            keys["t"] = keys["T"] = false;
         }
 
         // Roll
@@ -266,19 +321,18 @@ function animate() {
         if (keys["v"] || keys["V"]) currentSituation = "conversation";
         if (keys["o"] || keys["O"]) currentSituation = "obstacle";
 
-        if (currentSituation === "travel" && (keys["ArrowLeft"] || keys["ArrowRight"] || keys["ArrowUp"] || keys["ArrowDown"])) {
+        if (currentSituation === "travel" && (keys["ArrowUp"] || keys["ArrowDown"] || keys["ArrowLeft"] || keys["ArrowRight"])) {
             char.progress = Math.min(10, char.progress + 1);
             updateHUD();
         }
     }
 
-    // Camera always centers on current character with rotation
-    const target = controlMode === "on_foot" ? human.position : ship.position;
-    const cameraDistance = 150;
-    const camX = target.x + Math.sin(cameraYaw.value) * cameraDistance;
-    const camZ = target.z + Math.cos(cameraYaw.value) * cameraDistance;
+    // Camera follows player facing
+    const camDistance = 150;
+    const camX = target.position.x + Math.sin(playerYaw + Math.PI) * camDistance;
+    const camZ = target.position.z + Math.cos(playerYaw + Math.PI) * camDistance;
     camera.position.set(camX, 60, camZ);
-    camera.lookAt(target);
+    camera.lookAt(target.position);
 
     renderer.render(scene, camera);
 }
