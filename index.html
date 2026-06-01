@@ -72,7 +72,7 @@
     </main>
 
 <script>
-// Complete Starforged 3D - flat terrain with color variations, all controls, accessibility fixes
+// Complete Starforged 3D - smooth terrain with perlin-like noise, all controls, accessibility fixes
 const canvas = document.getElementById('canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -94,16 +94,16 @@ scene.add(fillLight);
 const hemiLight = new THREE.HemisphereLight(0xaaccff, 0x334422, 0.9);
 scene.add(hemiLight);
 
-// World types with color palettes for variation
+// World types with color palettes and height variance for variation
 const worldTypes = [
-    {name: "Barren World", colors: [0x666666, 0x777777, 0x888888]},
-    {name: "Frozen World", colors: [0xaabbff, 0xccddff, 0x99bbff]},
-    {name: "Arid World", colors: [0xffeecc, 0xffd9a3, 0xffe6b3]},
-    {name: "Oceanic World", colors: [0x2288dd, 0x3399ff, 0x1177cc]},
-    {name: "Arboreal World", colors: [0x44aa55, 0x55bb66, 0x339944]},
-    {name: "Earthlike World", colors: [0x55bb66, 0x66cc77, 0x44aa55]},
-    {name: "Volcanic World", colors: [0xdd7744, 0xee8855, 0xcc6633]},
-    {name: "Metallic World", colors: [0xaaaaaa, 0xbbbbbb, 0x999999]}
+    {name: "Barren World", colors: [0x666666, 0x777777, 0x888888], heightVar: 2.0},
+    {name: "Frozen World", colors: [0xaabbff, 0xccddff, 0x99bbff], heightVar: 1.5},
+    {name: "Arid World", colors: [0xffeecc, 0xffd9a3, 0xffe6b3], heightVar: 2.5},
+    {name: "Oceanic World", colors: [0x2288dd, 0x3399ff, 0x1177cc], heightVar: 1.2},
+    {name: "Arboreal World", colors: [0x44aa55, 0x55bb66, 0x339944], heightVar: 2.2},
+    {name: "Earthlike World", colors: [0x55bb66, 0x66cc77, 0x44aa55], heightVar: 2.0},
+    {name: "Volcanic World", colors: [0xdd7744, 0xee8855, 0xcc6633], heightVar: 3.0},
+    {name: "Metallic World", colors: [0xaaaaaa, 0xbbbbbb, 0x999999], heightVar: 1.8}
 ];
 
 let currentPlanet = {...worldTypes[5]};
@@ -113,10 +113,46 @@ const blockSize = 32;
 const gridSize = 64;
 let terrainBlocks = [];
 
+// Smooth interpolation function for perlin-like noise
+function smoothstep(t) {
+    return t * t * (3 - 2 * t);
+}
+
+// Perlin-like noise using interpolation
+function perlinNoise(x, z) {
+    const xi = Math.floor(x);
+    const zi = Math.floor(z);
+    const xf = x - xi;
+    const zf = z - zi;
+    
+    const u = smoothstep(xf);
+    const v = smoothstep(zf);
+    
+    // Pseudo-random gradient for each grid point
+    const grad = (gx, gz) => {
+        const seed = gx * 73856093 ^ gz * 19349663;
+        return Math.sin(seed) * 0.5;
+    };
+    
+    const n00 = grad(xi, zi);
+    const n10 = grad(xi + 1, zi);
+    const n01 = grad(xi, zi + 1);
+    const n11 = grad(xi + 1, zi + 1);
+    
+    const nx0 = n00 * (1 - u) + n10 * u;
+    const nx1 = n01 * (1 - u) + n11 * u;
+    return nx0 * (1 - v) + nx1 * v;
+}
+
 function getTerrainHeight(worldX, worldZ) {
-    // Flat terrain with minimal variation (0-2 blocks)
-    let height = Math.random() * 1.5;
-    return Math.max(1, Math.floor(height)) * blockSize;
+    const hVar = currentPlanet.heightVar || 2.0;
+    
+    // Multiple octaves of perlin noise for smooth terrain
+    let height = perlinNoise(worldX / 200, worldZ / 180) * hVar * 0.6 +
+                 perlinNoise(worldX / 400, worldZ / 360) * hVar * 0.3 +
+                 perlinNoise(worldX / 100, worldZ / 90) * hVar * 0.1;
+    
+    return Math.max(1, Math.floor(height + 1)) * blockSize;
 }
 
 function getTerrainColor(worldX, worldZ) {
@@ -124,8 +160,6 @@ function getTerrainColor(worldX, worldZ) {
     const colorIndex = Math.abs(Math.floor(worldX / 60) + Math.floor(worldZ / 60)) % currentPlanet.colors.length;
     const baseColor = currentPlanet.colors[colorIndex];
     
-    // Add slight random variation to color
-    const variation = Math.floor(Math.random() * 3) - 1;
     return baseColor;
 }
 
@@ -136,8 +170,7 @@ function generateTerrain() {
         for (let z = 0; z < gridSize; z++) {
             const worldX = (x - gridSize/2) * blockSize;
             const worldZ = (z - gridSize/2) * blockSize;
-            // Mostly 1 block, occasionally 2
-            let heightBlocks = Math.random() > 0.8 ? 2 : 1;
+            const heightBlocks = getTerrainHeight(worldX, worldZ) / blockSize;
             
             for (let y = 0; y < heightBlocks; y++) {
                 const block = new THREE.Mesh(
@@ -252,12 +285,12 @@ function updateHUD() {
         const val = char.meters[key];
         const perc = key === "Momentum" ? ((val + 6) / 16 * 100) : (val / 5 * 100);
         const barColor = key === "Health" ? "#f00" : key === "Spirit" ? "#f0f" : key === "Supply" ? "#0f0" : "#0ff";
-        html += `<div style="display:flex;align-items:center;margin:4px 0;"><span style="width:90px;">${key}: ${val}</span><div style="flex:1;background:#333;height:12px;border-radius:6px;overflow:hidden;"><div style="width:${perc}%;height:100%;background:${barColor};"></div></div></div>`;
+        html += `<div style="display:flex;align-items:center;margin:4px 0;"><span style="width:90px;">${key}: ${val}</span><div style="flex:1;background:#333;height:12px;border-radius:6px;overflow:hidden;"><div style="background:${barColor};width:${perc}%;height:100%;"></div></div></div>`;
     });
     document.getElementById('meters').innerHTML = html;
     
     const progressPerc = (char.progress / 10) * 100;
-    document.getElementById('progress').innerHTML = `Progress: <span style="color:#0f0;">${char.progress}/10</span><div style="background:#333;height:14px;border-radius:7px;overflow:hidden;display:inline-block;width:150px;margin-left:5px;vertical-align:middle;"><div style="width:${progressPerc}%;height:100%;background:#0f0;"></div></div>`;
+    document.getElementById('progress').innerHTML = `Progress: <span style="color:#0f0;">${char.progress}/10</span><div style="background:#333;height:14px;border-radius:7px;overflow:hidden;display:inline-block;width:100px;margin-left:10px;vertical-align:middle;"><div style="background:#0f0;width:${progressPerc}%;height:100%;"></div></div>`;
     
     document.getElementById('planetInfo').innerHTML = `Planet: <span style="color:#ff0;">${currentPlanet.name}</span>`;
     document.getElementById('situationText').textContent = currentSituation.toUpperCase();
