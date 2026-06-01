@@ -111,8 +111,10 @@ let currentPlanet = {...worldTypes[5]};
 const mapSize = 2000;
 const blockSize = 32;
 const gridSize = 64;
-const mapBounds = (gridSize / 2) * blockSize; // Half the map size in each direction
+const mapBounds = (gridSize / 2) * blockSize;
 let terrainBlocks = [];
+let effectsGroup = new THREE.Group();
+scene.add(effectsGroup);
 
 // Smooth interpolation function for perlin-like noise
 function smoothstep(t) {
@@ -129,7 +131,6 @@ function perlinNoise(x, z) {
     const u = smoothstep(xf);
     const v = smoothstep(zf);
     
-    // Pseudo-random gradient for each grid point
     const grad = (gx, gz) => {
         const seed = gx * 73856093 ^ gz * 19349663;
         return Math.sin(seed) * 0.5;
@@ -148,7 +149,6 @@ function perlinNoise(x, z) {
 function getTerrainHeight(worldX, worldZ) {
     const hVar = currentPlanet.heightVar || 2.0;
     
-    // Multiple octaves of perlin noise for smooth terrain
     let height = perlinNoise(worldX / 200, worldZ / 180) * hVar * 0.6 +
                  perlinNoise(worldX / 400, worldZ / 360) * hVar * 0.3 +
                  perlinNoise(worldX / 100, worldZ / 90) * hVar * 0.1;
@@ -157,7 +157,6 @@ function getTerrainHeight(worldX, worldZ) {
 }
 
 function getTerrainColor(worldX, worldZ) {
-    // Distribute colors across the terrain for visual variety
     const colorIndex = Math.abs(Math.floor(worldX / 60) + Math.floor(worldZ / 60)) % currentPlanet.colors.length;
     const baseColor = currentPlanet.colors[colorIndex];
     
@@ -280,18 +279,470 @@ function ironswornRoll(stat) {
     return {text: "Miss", action, c1, c2};
 }
 
+function clearEffects() {
+    effectsGroup.children.forEach(child => {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+            if (Array.isArray(child.material)) {
+                child.material.forEach(m => m.dispose());
+            } else {
+                child.material.dispose();
+            }
+        }
+    });
+    effectsGroup.clear();
+}
+
+function generateEffectForRoll(situation, outcome) {
+    const target = controlMode === "on_foot" ? human : ship;
+    const planetName = currentPlanet.name;
+    let effects = [];
+
+    // Context-aware effects based on situation and outcome
+    if (situation === "travel") {
+        if (outcome === "Strong Hit") {
+            // Successful travel: wormhole effect
+            effects.push({
+                type: "wormhole",
+                position: {x: target.position.x + 50, y: target.position.y + 100, z: target.position.z + 50}
+            });
+            effects.push({
+                type: "starfield",
+                position: {x: target.position.x - 100, y: target.position.y, z: target.position.z - 100}
+            });
+        } else if (outcome === "Weak Hit") {
+            // Risky travel: turbulence
+            effects.push({
+                type: "turbulence",
+                position: {x: target.position.x, y: target.position.y + 50, z: target.position.z}
+            });
+        } else {
+            // Failed travel: danger/debris
+            effects.push({
+                type: "debris_field",
+                position: {x: target.position.x, y: target.position.y + 80, z: target.position.z}
+            });
+            effects.push({
+                type: "danger_indicator",
+                position: {x: target.position.x + 60, y: target.position.y + 40, z: target.position.z}
+            });
+        }
+    } else if (situation === "combat") {
+        if (outcome === "Strong Hit") {
+            // Winning combat: enemy explosion
+            effects.push({
+                type: "explosion",
+                position: {x: target.position.x + 80, y: target.position.y + 60, z: target.position.z}
+            });
+            effects.push({
+                type: "laser_burst",
+                position: {x: target.position.x, y: target.position.y + 20, z: target.position.z}
+            });
+        } else if (outcome === "Weak Hit") {
+            // Struggling combat: shield flare
+            effects.push({
+                type: "shield_flare",
+                position: {x: target.position.x, y: target.position.y + 30, z: target.position.z}
+            });
+        } else {
+            // Losing combat: incoming fire
+            effects.push({
+                type: "incoming_fire",
+                position: {x: target.position.x - 100, y: target.position.y + 100, z: target.position.z}
+            });
+        }
+    } else if (situation === "conversation") {
+        if (outcome === "Strong Hit") {
+            // Good negotiation: hologram
+            effects.push({
+                type: "hologram",
+                position: {x: target.position.x + 40, y: target.position.y + 40, z: target.position.z}
+            });
+        } else if (outcome === "Weak Hit") {
+            // Tense negotiation: signal
+            effects.push({
+                type: "signal_ping",
+                position: {x: target.position.x, y: target.position.y + 50, z: target.position.z}
+            });
+        } else {
+            // Failed negotiation: hostile action
+            effects.push({
+                type: "alarm",
+                position: {x: target.position.x, y: target.position.y + 50, z: target.position.z}
+            });
+            effects.push({
+                type: "red_alert",
+                position: {x: target.position.x + 40, y: target.position.y + 30, z: target.position.z}
+            });
+        }
+    } else if (situation === "obstacle") {
+        if (outcome === "Strong Hit") {
+            // Overcame obstacle: environmental clearing
+            if (planetName.includes("Frozen")) {
+                effects.push({
+                    type: "ice_break",
+                    position: {x: target.position.x, y: target.position.y - 50, z: target.position.z}
+                });
+            } else if (planetName.includes("Volcanic")) {
+                effects.push({
+                    type: "lava_calm",
+                    position: {x: target.position.x, y: target.position.y - 80, z: target.position.z}
+                });
+            } else {
+                effects.push({
+                    type: "particle_cleared",
+                    position: {x: target.position.x, y: target.position.y, z: target.position.z}
+                });
+            }
+        } else if (outcome === "Weak Hit") {
+            // Partial obstacle: storm brewing
+            effects.push({
+                type: "storm_cloud",
+                position: {x: target.position.x, y: target.position.y + 150, z: target.position.z}
+            });
+        } else {
+            // Failed obstacle: major hazard
+            if (planetName.includes("Frozen")) {
+                effects.push({
+                    type: "blizzard",
+                    position: {x: target.position.x, y: target.position.y + 100, z: target.position.z}
+                });
+            } else if (planetName.includes("Oceanic")) {
+                effects.push({
+                    type: "whirlpool",
+                    position: {x: target.position.x, y: target.position.y + 50, z: target.position.z}
+                });
+            } else if (planetName.includes("Volcanic")) {
+                effects.push({
+                    type: "lava_eruption",
+                    position: {x: target.position.x - 100, y: target.position.y, z: target.position.z}
+                });
+            } else {
+                effects.push({
+                    type: "earthquake",
+                    position: {x: target.position.x, y: target.position.y, z: target.position.z}
+                });
+            }
+        }
+    }
+
+    // Render the effects
+    effects.forEach(effect => renderEffect(effect));
+}
+
+function renderEffect(effect) {
+    const pos = effect.position;
+
+    if (effect.type === "wormhole") {
+        const ring = new THREE.Mesh(
+            new THREE.TorusGeometry(80, 15, 32, 64),
+            new THREE.MeshPhongMaterial({ color: 0x00ff00, emissive: 0x00ff00, wireframe: true })
+        );
+        ring.position.set(pos.x, pos.y, pos.z);
+        ring.rotation.x = Math.random() * Math.PI;
+        effectsGroup.add(ring);
+
+        // Second rotating ring
+        const ring2 = new THREE.Mesh(
+            new THREE.TorusGeometry(100, 8, 32, 64),
+            new THREE.MeshPhongMaterial({ color: 0x00ff88, emissive: 0x00ff88, wireframe: true })
+        );
+        ring2.position.set(pos.x, pos.y, pos.z);
+        ring2.rotation.z = Math.random() * Math.PI;
+        effectsGroup.add(ring2);
+
+    } else if (effect.type === "starfield") {
+        for (let i = 0; i < 20; i++) {
+            const star = new THREE.Mesh(
+                new THREE.SphereGeometry(2, 4, 4),
+                new THREE.MeshPhongMaterial({ color: 0xffff00, emissive: 0xffff00 })
+            );
+            star.position.set(
+                pos.x + (Math.random() - 0.5) * 200,
+                pos.y + (Math.random() - 0.5) * 200,
+                pos.z + (Math.random() - 0.5) * 200
+            );
+            effectsGroup.add(star);
+        }
+
+    } else if (effect.type === "turbulence") {
+        for (let i = 0; i < 15; i++) {
+            const particle = new THREE.Mesh(
+                new THREE.SphereGeometry(3, 8, 8),
+                new THREE.MeshPhongMaterial({ color: 0xff8800, emissive: 0xff8800 })
+            );
+            particle.position.set(
+                pos.x + (Math.random() - 0.5) * 150,
+                pos.y + (Math.random() - 0.5) * 150,
+                pos.z + (Math.random() - 0.5) * 150
+            );
+            effectsGroup.add(particle);
+        }
+
+    } else if (effect.type === "debris_field") {
+        for (let i = 0; i < 30; i++) {
+            const debris = new THREE.Mesh(
+                new THREE.BoxGeometry(5 + Math.random() * 10, 5 + Math.random() * 10, 5 + Math.random() * 10),
+                new THREE.MeshPhongMaterial({ color: 0x666666 })
+            );
+            debris.position.set(
+                pos.x + (Math.random() - 0.5) * 200,
+                pos.y + (Math.random() - 0.5) * 150,
+                pos.z + (Math.random() - 0.5) * 200
+            );
+            debris.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+            effectsGroup.add(debris);
+        }
+
+    } else if (effect.type === "danger_indicator") {
+        const warning = new THREE.Mesh(
+            new THREE.OctahedronGeometry(30, 2),
+            new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0xff0000, wireframe: true })
+        );
+        warning.position.set(pos.x, pos.y, pos.z);
+        effectsGroup.add(warning);
+
+    } else if (effect.type === "explosion") {
+        for (let i = 0; i < 50; i++) {
+            const flame = new THREE.Mesh(
+                new THREE.SphereGeometry(3 + Math.random() * 8, 8, 8),
+                new THREE.MeshPhongMaterial({ 
+                    color: Math.random() > 0.5 ? 0xff5500 : 0xffaa00, 
+                    emissive: Math.random() > 0.5 ? 0xff5500 : 0xffaa00 
+                })
+            );
+            flame.position.set(
+                pos.x + (Math.random() - 0.5) * 100,
+                pos.y + (Math.random() - 0.5) * 100,
+                pos.z + (Math.random() - 0.5) * 100
+            );
+            effectsGroup.add(flame);
+        }
+
+    } else if (effect.type === "laser_burst") {
+        for (let i = 0; i < 8; i++) {
+            const laser = new THREE.Mesh(
+                new THREE.CylinderGeometry(2, 2, 80, 8),
+                new THREE.MeshPhongMaterial({ color: 0x00ff00, emissive: 0x00ff00 })
+            );
+            laser.position.set(pos.x, pos.y, pos.z);
+            laser.rotation.z = (i / 8) * Math.PI * 2;
+            laser.translateZ(50);
+            effectsGroup.add(laser);
+        }
+
+    } else if (effect.type === "shield_flare") {
+        const shield = new THREE.Mesh(
+            new THREE.IcosahedronGeometry(60, 4),
+            new THREE.MeshPhongMaterial({ color: 0x0099ff, emissive: 0x0099ff, wireframe: true, transparent: true, opacity: 0.6 })
+        );
+        shield.position.set(pos.x, pos.y, pos.z);
+        effectsGroup.add(shield);
+
+    } else if (effect.type === "incoming_fire") {
+        for (let i = 0; i < 10; i++) {
+            const bolt = new THREE.Mesh(
+                new THREE.CylinderGeometry(1, 1, 40, 6),
+                new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0xff0000 })
+            );
+            bolt.position.set(
+                pos.x + (Math.random() - 0.5) * 80,
+                pos.y + (Math.random() - 0.5) * 80,
+                pos.z + (Math.random() - 0.5) * 80
+            );
+            bolt.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+            effectsGroup.add(bolt);
+        }
+
+    } else if (effect.type === "hologram") {
+        const holo = new THREE.Mesh(
+            new THREE.IcosahedronGeometry(30, 3),
+            new THREE.MeshPhongMaterial({ color: 0x00ffff, emissive: 0x00ffff, wireframe: true, transparent: true, opacity: 0.7 })
+        );
+        holo.position.set(pos.x, pos.y, pos.z);
+        effectsGroup.add(holo);
+
+        // Add data points around hologram
+        for (let i = 0; i < 5; i++) {
+            const dataPoint = new THREE.Mesh(
+                new THREE.TetrahedronGeometry(5),
+                new THREE.MeshPhongMaterial({ color: 0x00ffff, emissive: 0x00ffff })
+            );
+            dataPoint.position.set(
+                pos.x + Math.cos((i / 5) * Math.PI * 2) * 50,
+                pos.y + Math.sin((i / 5) * Math.PI * 2) * 50,
+                pos.z
+            );
+            effectsGroup.add(dataPoint);
+        }
+
+    } else if (effect.type === "signal_ping") {
+        const ping = new THREE.Mesh(
+            new THREE.TorusGeometry(40, 3, 16, 32),
+            new THREE.MeshPhongMaterial({ color: 0xffff00, emissive: 0xffff00 })
+        );
+        ping.position.set(pos.x, pos.y, pos.z);
+        effectsGroup.add(ping);
+
+    } else if (effect.type === "alarm") {
+        const alarm = new THREE.Mesh(
+            new THREE.OctahedronGeometry(40, 2),
+            new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0xff0000 })
+        );
+        alarm.position.set(pos.x, pos.y, pos.z);
+        effectsGroup.add(alarm);
+
+    } else if (effect.type === "red_alert") {
+        const strobe = new THREE.Mesh(
+            new THREE.BoxGeometry(50, 50, 50),
+            new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0xff0000, wireframe: true })
+        );
+        strobe.position.set(pos.x, pos.y, pos.z);
+        effectsGroup.add(strobe);
+
+    } else if (effect.type === "ice_break") {
+        for (let i = 0; i < 25; i++) {
+            const ice = new THREE.Mesh(
+                new THREE.BoxGeometry(10 + Math.random() * 20, 5 + Math.random() * 10, 10 + Math.random() * 20),
+                new THREE.MeshPhongMaterial({ color: 0xaabbff, emissive: 0x5588ff })
+            );
+            ice.position.set(
+                pos.x + (Math.random() - 0.5) * 180,
+                pos.y + (Math.random() - 0.5) * 100,
+                pos.z + (Math.random() - 0.5) * 180
+            );
+            ice.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+            effectsGroup.add(ice);
+        }
+
+    } else if (effect.type === "lava_calm") {
+        for (let i = 0; i < 15; i++) {
+            const steam = new THREE.Mesh(
+                new THREE.SphereGeometry(8 + Math.random() * 15, 8, 8),
+                new THREE.MeshPhongMaterial({ 
+                    color: 0xffaa55, 
+                    emissive: 0xff6633,
+                    transparent: true,
+                    opacity: 0.6
+                })
+            );
+            steam.position.set(
+                pos.x + (Math.random() - 0.5) * 180,
+                pos.y + (Math.random() - 0.5) * 150,
+                pos.z + (Math.random() - 0.5) * 180
+            );
+            effectsGroup.add(steam);
+        }
+
+    } else if (effect.type === "particle_cleared") {
+        for (let i = 0; i < 20; i++) {
+            const particle = new THREE.Mesh(
+                new THREE.SphereGeometry(2 + Math.random() * 4, 6, 6),
+                new THREE.MeshPhongMaterial({ color: 0x88ff88, emissive: 0x44ff44 })
+            );
+            particle.position.set(
+                pos.x + (Math.random() - 0.5) * 150,
+                pos.y + (Math.random() - 0.5) * 150,
+                pos.z + (Math.random() - 0.5) * 150
+            );
+            effectsGroup.add(particle);
+        }
+
+    } else if (effect.type === "storm_cloud") {
+        for (let i = 0; i < 12; i++) {
+            const cloud = new THREE.Mesh(
+                new THREE.SphereGeometry(20 + Math.random() * 40, 8, 8),
+                new THREE.MeshPhongMaterial({ 
+                    color: 0x444444, 
+                    emissive: 0x222222,
+                    transparent: true,
+                    opacity: 0.7
+                })
+            );
+            cloud.position.set(
+                pos.x + (Math.random() - 0.5) * 200,
+                pos.y + (Math.random() - 0.5) * 150,
+                pos.z + (Math.random() - 0.5) * 200
+            );
+            effectsGroup.add(cloud);
+        }
+
+    } else if (effect.type === "blizzard") {
+        for (let i = 0; i < 80; i++) {
+            const snow = new THREE.Mesh(
+                new THREE.SphereGeometry(1 + Math.random() * 2, 4, 4),
+                new THREE.MeshPhongMaterial({ color: 0xffffff, emissive: 0xcccccc })
+            );
+            snow.position.set(
+                pos.x + (Math.random() - 0.5) * 250,
+                pos.y + (Math.random() - 0.5) * 200,
+                pos.z + (Math.random() - 0.5) * 250
+            );
+            effectsGroup.add(snow);
+        }
+
+    } else if (effect.type === "whirlpool") {
+        for (let i = 0; i < 40; i++) {
+            const water = new THREE.Mesh(
+                new THREE.IcosahedronGeometry(8, 1),
+                new THREE.MeshPhongMaterial({ color: 0x1166dd, emissive: 0x0044aa })
+            );
+            const angle = (i / 40) * Math.PI * 2;
+            const radius = 50 + i * 2;
+            water.position.set(
+                pos.x + Math.cos(angle) * radius,
+                pos.y + (Math.random() - 0.5) * 100,
+                pos.z + Math.sin(angle) * radius
+            );
+            effectsGroup.add(water);
+        }
+
+    } else if (effect.type === "lava_eruption") {
+        for (let i = 0; i < 60; i++) {
+            const lava = new THREE.Mesh(
+                new THREE.SphereGeometry(4 + Math.random() * 8, 8, 8),
+                new THREE.MeshPhongMaterial({ 
+                    color: 0xff4400, 
+                    emissive: 0xff2200
+                })
+            );
+            lava.position.set(
+                pos.x + (Math.random() - 0.5) * 200,
+                pos.y + Math.random() * 200,
+                pos.z + (Math.random() - 0.5) * 200
+            );
+            effectsGroup.add(lava);
+        }
+
+    } else if (effect.type === "earthquake") {
+        for (let i = 0; i < 35; i++) {
+            const crack = new THREE.Mesh(
+                new THREE.BoxGeometry(30 + Math.random() * 50, 5 + Math.random() * 10, 30 + Math.random() * 50),
+                new THREE.MeshPhongMaterial({ color: 0x554433, emissive: 0x332211 })
+            );
+            crack.position.set(
+                pos.x + (Math.random() - 0.5) * 250,
+                pos.y + (Math.random() - 0.5) * 80,
+                pos.z + (Math.random() - 0.5) * 250
+            );
+            crack.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+            effectsGroup.add(crack);
+        }
+    }
+}
+
 function updateHUD() {
     let html = '';
     Object.keys(char.meters).forEach(key => {
         const val = char.meters[key];
         const perc = key === "Momentum" ? ((val + 6) / 16 * 100) : (val / 5 * 100);
         const barColor = key === "Health" ? "#f00" : key === "Spirit" ? "#f0f" : key === "Supply" ? "#0f0" : "#0ff";
-        html += `<div style="display:flex;align-items:center;margin:4px 0;"><span style="width:90px;">${key}: ${val}</span><div style="flex:1;background:#333;height:12px;border-radius:6px;overflow:hidden;display:inline-block;margin-left:8px;"><div style="width:${perc}%;height:100%;background:${barColor};"></div></div></div>`;
+        html += `<div style="display:flex;align-items:center;margin:4px 0;"><span style="width:90px;">${key}: ${val}</span><div style="flex:1;background:#333;height:12px;border-radius:6px;overflow:hidden;display:inline-block;"><div style="width:${perc}%;height:100%;background:${barColor};"></div></div></div>`;
     });
     document.getElementById('meters').innerHTML = html;
     
     const progressPerc = (char.progress / 10) * 100;
-    document.getElementById('progress').innerHTML = `Progress: <span style="color:#0f0;">${char.progress}/10</span><div style="background:#333;height:14px;border-radius:7px;overflow:hidden;display:inline-block;width:100px;margin-left:8px;vertical-align:middle;"><div style="width:${progressPerc}%;height:100%;background:#0f0;"></div></div>`;
+    document.getElementById('progress').innerHTML = `Progress: <span style="color:#0f0;">${char.progress}/10</span><div style="background:#333;height:14px;border-radius:7px;overflow:hidden;display:inline-block;width:180px;"><div style="width:${progressPerc}%;height:100%;background:#0f0;"></div></div>`;
     
     document.getElementById('planetInfo').innerHTML = `Planet: <span style="color:#ff0;">${currentPlanet.name}</span>`;
     document.getElementById('situationText').textContent = currentSituation.toUpperCase();
@@ -322,7 +773,6 @@ function travelToNewPlanet() {
     setTimeout(() => { ship.position.y = 20; }, 800);
 }
 
-// Wrap position within map bounds (treadmill effect)
 function wrapPosition(pos) {
     const bounds = mapBounds;
     if (pos.x > bounds) pos.x -= bounds * 2;
@@ -361,7 +811,6 @@ function animate() {
         if (keys["ArrowLeft"]) { target.position.x += strafeX * speed * 0.7; target.position.z += strafeZ * speed * 0.7; }
         if (keys["ArrowRight"]) { target.position.x -= strafeX * speed * 0.7; target.position.z -= strafeZ * speed * 0.7; }
 
-        // Apply treadmill wrapping to prevent going off map
         wrapPosition(target.position);
 
         // Vertical movement for ship only
@@ -437,6 +886,10 @@ function animate() {
                     char.meters.Momentum = Math.max(-6, char.meters.Momentum - 2);
                 }
                 updateHUD();
+
+                // Generate and display context-aware effects
+                clearEffects();
+                generateEffectForRoll(currentSituation, rollResult.text);
 
                 const diceEl = document.getElementById('dice');
                 diceEl.style.display = 'block';
